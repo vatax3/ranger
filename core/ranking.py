@@ -4,7 +4,7 @@ Moteur de filtrage, déduplication et tri des torrents.
 
 import logging
 
-from core.parsing import parse_release, best_language, resolution_rank
+from core.parsing import parse_release, best_language, resolution_rank, quality_score
 from utils import (
     check_title_match,
     check_title_tokens,
@@ -129,6 +129,15 @@ def dedupe(torrents, providers_order):
     return list(unique.values())
 
 
+def score_of(torrent, language_order):
+    """Score qualité mémoïsé sur le torrent."""
+    if "_score" not in torrent:
+        torrent["_score"] = quality_score(
+            torrent["_meta"], torrent.get("seeders", 0), language_order
+        )
+    return torrent["_score"]
+
+
 def sort_entries(entries, config):
     """
     Trie les entrées de stream selon les critères configurés (dans l'ordre).
@@ -146,6 +155,8 @@ def sort_entries(entries, config):
         for criterion in criteria:
             if criterion == "cached":
                 parts.append(0 if entry["cached"] else 1)
+            elif criterion == "quality":
+                parts.append(-score_of(t, lang_order))
             elif criterion == "language":
                 parts.append(best_language(meta["languages"], lang_order))
             elif criterion == "resolution":

@@ -139,3 +139,50 @@ def resolution_rank(resolution, resolution_order):
         return resolution_order.index(resolution)
     except ValueError:
         return len(resolution_order)
+
+
+# --- Score de qualité global (plus élevé = meilleur) ---
+
+_RES_SCORE = {"4K": 4000, "1080p": 3000, "720p": 2000, "SD": 1000}
+_SOURCE_SCORE = {
+    "REMUX": 500, "BluRay": 400, "WEB-DL": 350, "WEBRip": 250,
+    "WEB": 220, "HDTV": 120, "DVDRip": 100, "CAM": -2000,
+}
+
+
+def quality_score(meta, seeders=0, language_order=None):
+    """
+    Score de qualité d'une release, indépendant du statut de cache.
+    Combine résolution, source, HDR/DV, codec, langue préférée et seeders.
+    """
+    score = 0
+    score += _RES_SCORE.get(meta.get("resolution"), 500)
+    score += _SOURCE_SCORE.get(meta.get("source"), 150)
+
+    hdr = meta.get("hdr") or []
+    if "DV" in hdr:
+        score += 120
+    if any(h.startswith("HDR") for h in hdr):
+        score += 80
+    if "10bit" in hdr:
+        score += 30
+
+    if meta.get("codec") == "x265":
+        score += 40  # meilleur ratio qualité/taille
+    elif meta.get("codec") == "AV1":
+        score += 50
+
+    # Langue préférée : bonus décroissant selon l'ordre de préférence
+    if language_order:
+        rank = best_language(meta.get("languages") or [], language_order)
+        score += max(0, (len(language_order) - rank)) * 25
+
+    # Seeders : petit bonus logarithmique (fiabilité), plafonné
+    try:
+        s = int(seeders or 0)
+        if s > 0:
+            score += min(200, int((s ** 0.5) * 10))
+    except (TypeError, ValueError):
+        pass
+
+    return score

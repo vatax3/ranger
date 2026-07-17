@@ -143,6 +143,7 @@
         <button class="btn amber sm" onclick="flush('searches')">Vider les recherches</button>
         <button class="btn amber sm" onclick="flush('availability')">Vider la dispo débrideur</button>
         <button class="btn amber sm" onclick="flush('meta')">Vider les métadonnées</button>
+        <button class="btn amber sm" onclick="flush('links')">Vider les liens résolus</button>
         <button class="btn red sm" onclick="flush('all')">⚠️ Tout vider</button>
       </div>
     </div>
@@ -230,6 +231,7 @@ function renderStats(s) {
     ${stat(c.availability.total, "Hashes en cache", c.availability.cached + " cachés / " + c.availability.uncached + " non")}
     ${stat(c.searches.total, "Recherches en cache")}
     ${stat(c.meta.total, "Métadonnées")}
+    ${stat((c.links && c.links.total) || 0, "Liens résolus en cache")}
     ${stat(m.search_hit_rate + "%", "Hit-rate recherche", m.search_hit + " hits / " + m.search_miss + " miss")}
     ${stat(m.avail_hit_rate + "%", "Hit-rate dispo", m.avail_hit + " hits / " + m.avail_miss + " miss")}
   `;
@@ -301,7 +303,7 @@ async function delKey(table, key) {
   } catch (e) { toast(e.message, false); }
 }
 async function flush(table) {
-  const labels = { searches:"les recherches", availability:"la dispo débrideur", meta:"les métadonnées", all:"TOUT le cache" };
+  const labels = { searches:"les recherches", availability:"la dispo débrideur", meta:"les métadonnées", links:"les liens résolus", all:"TOUT le cache" };
   if (!confirm(`Vider ${labels[table]} ? Cette action est irréversible.`)) return;
   try {
     const r = await api("/admin/api/flush", { method:"POST", body: JSON.stringify({ table }) });

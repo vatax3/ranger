@@ -21,8 +21,10 @@
 | **Filtres** | Taille min/max, résolution, codec, langue, exclusion CAM, exclusion packs, nombre de résultats (global + par résolution). |
 | **Tri multi-critères** | Cache → langue → résolution → taille → seeders → tracker, ordre entièrement réordonnable. |
 | **Déduplication** | Par info_hash, en gardant le tracker prioritaire et le max de seeders. |
-| **Cache-only / non-caché** | Afficher uniquement le caché, ou proposer les non-cachés (le clic les ajoute au débrideur). Option liens **P2P** (moteur torrent de Stremio, sans débrideur). |
-| **Cache SQLite** | Statut de cache débrideur, résultats de recherche et métadonnées TMDB mis en cache (TTLs configurables) → réponses quasi instantanées sur les épisodes suivants d'une série. |
+| **Cache-only / non-caché** | Afficher uniquement le caché, ou proposer les non-cachés (le clic les ajoute au débrideur). |
+| **Mode d'affichage** | *Détaillé* (tous les liens + infos, pour les initiés) ou *Simplifié* (1 choix par résolution, meilleur lien auto-sélectionné — pour la famille). |
+| **Score de qualité** | Tri « meilleur d'abord » holistique (résolution + source + HDR/DV + codec + langue + seeders), sélectionnable comme critère de tri. |
+| **Cache SQLite** | Statut de cache débrideur, résultats de recherche, métadonnées TMDB et **liens débrideur résolus** mis en cache (TTLs configurables) → épisodes suivants et seeks quasi instantanés. |
 
 ---
 
@@ -103,6 +105,7 @@ Accessible sur `/admin` dès que `RANGER_ADMIN_TOKEN` est défini (sinon le pane
 | `RANGER_TTL_UNCACHED` | `1200` (20 min) | TTL cache « non caché » |
 | `RANGER_TTL_SEARCH` | `1800` (30 min) | TTL résultats de recherche |
 | `RANGER_TTL_META` | `604800` (7 j) | TTL métadonnées TMDB |
+| `RANGER_TTL_LINK` | `900` (15 min) | TTL des liens débrideur résolus (seek instantané) |
 | `HTTP_PROXY` / `HTTPS_PROXY` | — | Proxy sortant optionnel |
 
 ---

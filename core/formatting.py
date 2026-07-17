@@ -121,6 +121,31 @@ def build_debrid_stream(torrent, service, cached, resolve_url):
     return stream
 
 
+def build_simple_stream(torrent, service, cached, resolve_url, resolution):
+    """
+    Stream du mode simplifié (famille) : un seul lien par résolution, présenté
+    de façon épurée. Le meilleur torrent a déjà été choisi en amont.
+    """
+    meta = torrent["_meta"]
+    label = resolution or "Auto"
+    dot = "🟢" if cached else "🟠"
+    lang = meta["lang_display"] or ", ".join(meta["languages"])
+    infos = [f"💾 {format_size(torrent.get('size', 0))}"]
+    if lang:
+        infos.insert(0, lang)
+    if not cached:
+        infos.append("ajout au débrideur")
+
+    return {
+        "name": f"Ranger\n{dot} {label}",
+        "title": " · ".join(infos),
+        "description": " · ".join(infos),
+        "url": resolve_url,
+        "behaviorHints": _behavior_hints(torrent, service),
+        **_stream_meta_fields(torrent),
+    }
+
+
 def build_p2p_stream(torrent):
     """Stream P2P via le moteur torrent intégré de Stremio (sans débrideur)."""
     meta = torrent["_meta"]

@@ -18,7 +18,7 @@ KEYED_TRACKERS = ["c411", "torr9", "tr4ker", "nekobt"]
 DEBRID_SERVICES = ["alldebrid", "realdebrid", "torbox", "debridlink"]
 
 # Critères de tri disponibles
-SORT_CRITERIA = ["cached", "language", "resolution", "size_desc", "size_asc", "seeders", "tracker"]
+SORT_CRITERIA = ["cached", "quality", "language", "resolution", "size_desc", "size_asc", "seeders", "tracker"]
 
 DEFAULT_CONFIG = {
     # Clé TMDB (recommandée : titres FR, détection anime, épisodes absolus).
@@ -31,6 +31,11 @@ DEFAULT_CONFIG = {
     # "first" : n'affiche que le débrideur prioritaire où le torrent est en cache
     # "all"   : un stream par débrideur où le torrent est en cache
     "debrid_mode": "first",
+
+    # Mode d'affichage des résultats dans Stremio :
+    # "detailed" : liste complète (tous les liens + détails) — pour les initiés
+    # "simple"   : 1 lien par résolution, meilleur choix auto — pour la famille
+    "display_mode": "detailed",
 
     # StremThru : proxy d'API débrideur (contourne les blocages IP datacenter)
     "stremthru": {"url": "", "auth": ""},
@@ -67,7 +72,7 @@ DEFAULT_CONFIG = {
     },
 
     # Ordre des critères de tri (appliqués dans l'ordre)
-    "sort": ["cached", "language", "resolution", "size_desc"],
+    "sort": ["cached", "quality", "resolution", "language", "size_desc", "seeders", "tracker"],
 
     # Priorités utilisées par les critères "language" / "resolution" / "tracker"
     "language_order": ["MULTI", "VFF", "VF", "VFQ", "VOSTFR", "VO"],

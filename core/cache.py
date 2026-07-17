@@ -26,6 +26,7 @@ TTL_AVAIL_CACHED = int(os.getenv("RANGER_TTL_CACHED", 6 * 3600))      # torrent 
 TTL_AVAIL_MISS = int(os.getenv("RANGER_TTL_UNCACHED", 20 * 60))       # torrent vu non-caché
 TTL_SEARCH = int(os.getenv("RANGER_TTL_SEARCH", 30 * 60))
 TTL_META = int(os.getenv("RANGER_TTL_META", 7 * 24 * 3600))
+TTL_LINK = int(os.getenv("RANGER_TTL_LINK", 15 * 60))                 # lien débrideur résolu
 
 _lock = threading.Lock()
 _conn = None
@@ -58,6 +59,11 @@ def _get_conn():
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS links (
+                key TEXT PRIMARY KEY,
+                url TEXT NOT NULL,
                 created_at INTEGER NOT NULL
             );
             """
@@ -139,6 +145,29 @@ def set_search(key, results):
         conn.commit()
 
 
+def get_link(key):
+    """Lien débrideur résolu, encore valide (TTL court)."""
+    now = int(time.time())
+    with _lock:
+        conn = _get_conn()
+        row = conn.execute("SELECT url, created_at FROM links WHERE key = ?", (key,)).fetchone()
+    if row and now - row[1] <= TTL_LINK:
+        return row[0]
+    return None
+
+
+def set_link(key, url):
+    if not url:
+        return
+    with _lock:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO links (key, url, created_at) VALUES (?, ?, ?)",
+            (key, url, int(time.time())),
+        )
+        conn.commit()
+
+
 def get_meta(key):
     now = int(time.time())
     with _lock:
@@ -170,6 +199,7 @@ def cleanup():
         conn.execute("DELETE FROM availability WHERE checked_at < ?", (now - max(TTL_AVAIL_CACHED, TTL_AVAIL_MISS),))
         conn.execute("DELETE FROM searches WHERE created_at < ?", (now - TTL_SEARCH,))
         conn.execute("DELETE FROM meta WHERE created_at < ?", (now - TTL_META,))
+        conn.execute("DELETE FROM links WHERE created_at < ?", (now - TTL_LINK,))
         conn.commit()
 
 
@@ -202,6 +232,7 @@ def stats():
             "FROM searches GROUP BY src ORDER BY COUNT(*) DESC"
         ).fetchall()
         meta_total = conn.execute("SELECT COUNT(*) FROM meta").fetchone()[0]
+        links_total = conn.execute("SELECT COUNT(*) FROM links").fetchone()[0]
 
     db_size = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
     for wal in (DB_PATH + "-wal", DB_PATH + "-shm"):
@@ -224,11 +255,13 @@ def stats():
             "by_source": [{"source": s or "?", "total": t} for s, t in by_source],
         },
         "meta": {"total": meta_total},
+        "links": {"total": links_total},
         "ttl": {
             "cached": TTL_AVAIL_CACHED,
             "uncached": TTL_AVAIL_MISS,
             "search": TTL_SEARCH,
             "meta": TTL_META,
+            "link": TTL_LINK,
         },
         "metrics": get_metrics(),
     }
@@ -304,13 +337,13 @@ def refresh_media(imdb_id):
 
 
 def flush(table):
-    """Vide une table (searches|availability|meta|all)."""
-    targets = ["searches", "availability", "meta"] if table == "all" else [table]
+    """Vide une table (searches|availability|meta|links|all)."""
+    targets = ["searches", "availability", "meta", "links"] if table == "all" else [table]
     deleted = {}
     with _lock:
         conn = _get_conn()
         for t in targets:
-            if t in ("searches", "availability", "meta"):
+            if t in ("searches", "availability", "meta", "links"):
                 deleted[t] = conn.execute(f"DELETE FROM {t}").rowcount
         conn.commit()
     return deleted

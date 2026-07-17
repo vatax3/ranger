@@ -124,6 +124,16 @@
     </select>
   </div>
 
+  <!-- Mode d'affichage -->
+  <div class="card">
+    <h2>🖥️ Mode d'affichage</h2>
+    <p class="hint">Comment les résultats apparaissent dans Stremio.</p>
+    <select id="display_mode">
+      <option value="detailed">Détaillé — tous les liens et détails (pour les initiés)</option>
+      <option value="simple">Simplifié — 1 choix par résolution, meilleur lien auto (famille)</option>
+    </select>
+  </div>
+
   <!-- StremThru -->
   <div class="card">
     <h2>🛰️ StremThru <span class="small">(optionnel)</span></h2>
@@ -258,8 +268,8 @@ const RESOLUTIONS = ["4K", "1080p", "720p", "SD"];
 const CODECS = ["x265", "x264", "AV1"];
 const LANGUAGES = ["MULTI", "VFF", "VF", "VFQ", "VOSTFR", "VO"];
 const SORT_LABELS = {
-  cached: "⚡ En cache d'abord", language: "🗣️ Langue", resolution: "📺 Résolution",
-  size_desc: "💾 Taille décroissante", size_asc: "💾 Taille croissante",
+  cached: "⚡ En cache d'abord", quality: "⭐ Qualité globale", language: "🗣️ Langue",
+  resolution: "📺 Résolution", size_desc: "💾 Taille décroissante", size_asc: "💾 Taille croissante",
   seeders: "👤 Seeders", tracker: "🌐 Priorité tracker",
 };
 // Noms lisibles des sources (priorité d'affichage des trackers)
@@ -275,7 +285,7 @@ const PREFILL = null;
 let debrids = [];      // [{service, key}]
 let unit3ds = [];      // [{url, key}]
 let torznabs = [];     // [{name, url, apikey}]
-let sortOrder = ["cached", "language", "resolution", "size_desc"];
+let sortOrder = ["cached", "quality", "resolution", "language", "size_desc", "seeders", "tracker"];
 let langOrder = [...LANGUAGES];
 let provOrder = ["unit3d", "ygg", "c411", "torr9", "tr4ker", "abn", "torznab", "eztv", "apibay", "nyaa", "nekobt"];
 const selectedRes = new Set(), selectedCodec = new Set(), selectedLang = new Set();
@@ -446,6 +456,7 @@ function buildConfig() {
     tmdb_key: document.getElementById("tmdb_key").value.trim(),
     debrids: debrids.filter(d => d.key && d.key.trim()).map(d => ({ service: d.service, key: d.key.trim(), stremthru: d.stremthru !== false })),
     debrid_mode: document.getElementById("debrid_mode").value,
+    display_mode: document.getElementById("display_mode").value,
     stremthru: {
       url: document.getElementById("stremthru_url").value.trim(),
       auth: document.getElementById("stremthru_auth").value.trim(),
@@ -534,6 +545,7 @@ function applyPrefill(cfg) {
   // Champs simples
   setVal("tmdb_key", cfg.tmdb_key);
   setVal("debrid_mode", cfg.debrid_mode);
+  setVal("display_mode", cfg.display_mode);
   if (cfg.stremthru) { setVal("stremthru_url", cfg.stremthru.url); setVal("stremthru_auth", cfg.stremthru.auth); }
   if (cfg.abn) { setVal("abn_user", cfg.abn.username); setVal("abn_pass", cfg.abn.password); }
   setVal("min_size", f.min_size_gb); setVal("max_size", f.max_size_gb);
@@ -576,7 +588,7 @@ renderSortable("sortList", sortOrder, k => SORT_LABELS[k] || k);
 renderSortable("langOrder", langOrder, k => k);
 renderSortable("provOrder", provOrder, k => SOURCE_LABELS[k] || k);
 applyPrefillCheckboxes(PREFILL);
-["tmdb_key","stremthru_url","stremthru_auth","abn_user","abn_pass","debrid_mode",
+["tmdb_key","stremthru_url","stremthru_auth","abn_user","abn_pass","debrid_mode","display_mode",
  "min_size","max_size","max_results","max_per_res","exclude_cam","exclude_packs",
  "cache_mode"].forEach(id => {
   const el = document.getElementById(id);

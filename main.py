@@ -235,15 +235,17 @@ async def handle_stream(request):
             availability[backend.name] = avail
             logging.info(f"{backend.name}: {sum(1 for v in avail.values() if v)}/{len(hashes)} en cache")
 
-    # 5. Construction des entrées (torrent x débrideur)
-    entries = _build_entries(torrents, backends, availability, config)
+    # 5-7. Construction des streams selon le mode d'affichage
+    if config.get("display_mode") == "simple":
+        # Mode famille : 1 lien par résolution, meilleur choix automatique
+        entries = _build_simple_entries(torrents, backends, availability, config)
+        streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode, simple=True)
+    else:
+        entries = _build_entries(torrents, backends, availability, config)
+        entries = ranking.sort_entries(entries, config)
+        entries = ranking.apply_limits(entries, filters)
+        streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode)
 
-    # 6. Tri + limites
-    entries = ranking.sort_entries(entries, config)
-    entries = ranking.apply_limits(entries, filters)
-
-    # 7. Sérialisation en streams Stremio
-    streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode)
     RUNTIME["streams_served"] += len(streams)
     logging.info(f"{len(streams)} streams renvoyés à Stremio")
     return web.json_response({"streams": streams})
@@ -282,7 +284,51 @@ def _build_entries(torrents, backends, availability, config):
     return entries
 
 
-def _serialize_streams(entries, config_str, host_url, stream_type, season, episode):
+def _build_simple_entries(torrents, backends, availability, config):
+    """
+    Mode simplifié : une seule entrée par résolution, le meilleur torrent
+    (cache d'abord, puis score qualité) sur le débrideur prioritaire dispo.
+    """
+    filters = config.get("filters") or {}
+    cached_only = filters.get("cached_only", False)
+    show_uncached = filters.get("show_uncached", True) and not cached_only
+    lang_order = config.get("language_order") or []
+    res_order = config.get("resolution_order") or ["4K", "1080p", "720p", "SD"]
+
+    # Candidats : (torrent, service, cached) au meilleur débrideur possible
+    candidates = []
+    for t in torrents:
+        ih = t["info_hash"]
+        cached_backends = [b for b in backends if availability.get(b.name, {}).get(b.clean_hash(ih), False)]
+        if cached_backends:
+            candidates.append({"torrent": t, "service": cached_backends[0].name, "cached": True})
+        elif backends and show_uncached:
+            candidates.append({"torrent": t, "service": backends[0].name, "cached": False})
+
+    # Groupement par résolution, meilleur candidat par groupe
+    best_by_res = {}
+    for c in candidates:
+        res = c["torrent"]["_meta"]["resolution"] or "Auto"
+        rank = (0 if c["cached"] else 1, -ranking.score_of(c["torrent"], lang_order))
+        if res not in best_by_res or rank < best_by_res[res][0]:
+            best_by_res[res] = (rank, c)
+
+    # Ordonné selon la préférence de résolution
+    def res_key(res):
+        try:
+            return res_order.index(res)
+        except ValueError:
+            return len(res_order)
+
+    entries = []
+    for res in sorted(best_by_res, key=res_key):
+        entry = best_by_res[res][1]
+        entry["resolution"] = res
+        entries.append(entry)
+    return entries
+
+
+def _serialize_streams(entries, config_str, host_url, stream_type, season, episode, simple=False):
     streams = []
     for entry in entries:
         t = entry["torrent"]
@@ -297,7 +343,11 @@ def _serialize_streams(entries, config_str, host_url, stream_type, season, episo
         elif stream_type == "movie":
             resolve_url += "?type=movie"
 
-        streams.append(formatting.build_debrid_stream(t, service, entry["cached"], resolve_url))
+        if simple:
+            streams.append(formatting.build_simple_stream(
+                t, service, entry["cached"], resolve_url, entry.get("resolution", "")))
+        else:
+            streams.append(formatting.build_debrid_stream(t, service, entry["cached"], resolve_url))
     return streams
 
 
@@ -316,8 +366,19 @@ async def handle_resolve(request):
     season = request.query.get("season")
     episode = request.query.get("episode")
     media_type = request.query.get("type")
+    client_ip = get_client_ip(request)
 
-    backends = build_backends(config, client_ip=get_client_ip(request))
+    # Cache court des liens résolus : évite de re-débrider à chaque seek
+    # (libmpv rappelle /resolve à chaque Range request). Clé liée à l'IP client
+    # car certains liens débrideur sont générés pour une IP donnée.
+    link_key = f"{service_name}|{info_hash}|{season or ''}|{episode or ''}|{client_ip or ''}"
+    cached_url = cache.get_link(link_key)
+    if cached_url:
+        RUNTIME["resolve_ok"] += 1
+        logging.info(f"⚡ Lien résolu servi depuis le cache ({service_name})")
+        raise web.HTTPFound(cached_url)
+
+    backends = build_backends(config, client_ip=client_ip)
     backend = next((b for b in backends if b.name == service_name), None)
     if not backend:
         return web.Response(status=400, text=f"Débrideur non configuré : {service_name}")
@@ -330,6 +391,7 @@ async def handle_resolve(request):
     )
     if url:
         RUNTIME["resolve_ok"] += 1
+        cache.set_link(link_key, url)
         raise web.HTTPFound(url)
     return web.Response(status=404, text="Impossible de résoudre le stream")
 

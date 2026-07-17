@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ranger — Configuration</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b22; --card2: #1f232c; --border: #2a2f3a;
+    --text: #e6e8ec; --muted: #9aa2b1; --accent: #7c5cff; --accent2: #22c55e;
+    --danger: #ef4444; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 80px; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 2.4rem; margin: 0; letter-spacing: -1px; }
+  header h1 .r { color: var(--accent); }
+  header p { color: var(--muted); margin: 6px 0 0; }
+  .badge { font-size: .72rem; color: var(--muted); }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 18px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 1.05rem; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .card .hint { color: var(--muted); font-size: .85rem; margin: 0 0 14px; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 12px 0 5px; }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 10px 12px; background: var(--card2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: .92rem;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 140px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 560px) { .grid3 { grid-template-columns: 1fr 1fr; } }
+  .check {
+    display: flex; align-items: center; gap: 9px; padding: 9px 11px; background: var(--card2);
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: .9rem;
+  }
+  .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .check.on { border-color: var(--accent); }
+  .subfield { margin-top: 8px; display: none; }
+  .subfield.show { display: block; }
+  .debrid-list, .indexer-list { display: flex; flex-direction: column; gap: 10px; }
+  .debrid-item, .indexer-item {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  }
+  .debrid-item .head { display: flex; gap: 8px; align-items: center; }
+  .debrid-item .prio { color: var(--muted); font-size: .8rem; cursor: grab; user-select: none; }
+  .btn {
+    background: var(--accent); color: #fff; border: none; padding: 11px 16px; border-radius: 8px;
+    font-size: .92rem; font-weight: 600; cursor: pointer;
+  }
+  .btn.sm { padding: 7px 12px; font-size: .82rem; }
+  .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn.danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+  .actions { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 30%);
+    padding-top: 20px; display: flex; gap: 10px; flex-direction: column; }
+  .install {
+    display: block; text-align: center; background: var(--accent2); color: #05210f; font-weight: 700;
+    padding: 14px; border-radius: 10px; text-decoration: none; font-size: 1rem;
+  }
+  .install.disabled { opacity: .4; pointer-events: none; }
+  .url-box {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+    font-size: .78rem; word-break: break-all; color: var(--muted); margin-top: 8px; display: none;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    padding: 7px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--card2);
+    cursor: pointer; font-size: .82rem; user-select: none;
+  }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .sortable { display: flex; flex-direction: column; gap: 6px; }
+  .sort-item {
+    display: flex; align-items: center; gap: 8px; background: var(--card2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 11px; cursor: grab; font-size: .88rem;
+  }
+  .sort-item .grip { color: var(--muted); }
+  .small { font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="r">R</span>anger</h1>
+    <p>L'addon Stremio ultime — FR &amp; international · films / séries / anime</p>
+    <span class="badge">v__APP_VERSION__</span>
+  </header>
+
+  <!-- TMDB -->
+  <div class="card">
+    <h2>🎬 Clé TMDB</h2>
+    <p class="hint">Recommandé : titres FR, détection anime, épisodes absolus. Sans clé, fallback Cinemeta (titres anglais). <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color:var(--accent)">Obtenir une clé</a></p>
+    <input type="text" id="tmdb_key" placeholder="Clé API TMDB (v3)">
+  </div>
+
+  <!-- Débrideurs -->
+  <div class="card">
+    <h2>⚡ Débrideurs <span class="small">(glisser pour l'ordre de priorité)</span></h2>
+    <p class="hint">Le premier débrideur où un torrent est en cache est utilisé en priorité.</p>
+    <div class="debrid-list" id="debridList"></div>
+    <div style="margin-top:10px" class="row">
+      <div>
+        <select id="debridSelect">
+          <option value="alldebrid">AllDebrid</option>
+          <option value="realdebrid">Real-Debrid</option>
+          <option value="torbox">TorBox</option>
+          <option value="debridlink">DebridLink</option>
+        </select>
+      </div>
+      <button class="btn sm" onclick="addDebrid()">+ Ajouter</button>
+    </div>
+    <label>Mode d'affichage multi-débrideurs</label>
+    <select id="debrid_mode">
+      <option value="first">Prioritaire uniquement (1 lien par torrent)</option>
+      <option value="all">Tous les débrideurs en cache (1 lien chacun)</option>
+    </select>
+  </div>
+
+  <!-- StremThru -->
+  <div class="card">
+    <h2>🛰️ StremThru <span class="small">(optionnel)</span></h2>
+    <p class="hint">Proxy d'API débrideur — contourne les blocages d'IP datacenter (VPS). Laissez vide si non concerné.</p>
+    <label>URL de l'instance StremThru</label>
+    <input type="text" id="stremthru_url" placeholder="https://stremthru.exemple.com">
+    <label>Authentification (user:pass, si protégée)</label>
+    <input type="text" id="stremthru_auth" placeholder="user:pass">
+  </div>
+
+  <!-- Trackers publics -->
+  <div class="card">
+    <h2>🌍 Trackers publics</h2>
+    <p class="hint">Activez d'un clic — aucune clé requise.</p>
+    <div class="grid3" id="publicTrackers"></div>
+  </div>
+
+  <!-- Trackers privés / semi -->
+  <div class="card">
+    <h2>🔑 Trackers privés / semi-privés</h2>
+    <p class="hint">Cochez et renseignez votre clé / passkey.</p>
+    <div id="keyedTrackers"></div>
+
+    <label style="margin-top:16px">ABN (identifiants)</label>
+    <div class="grid2">
+      <input type="text" id="abn_user" placeholder="Utilisateur ABN">
+      <input type="password" id="abn_pass" placeholder="Mot de passe ABN">
+    </div>
+  </div>
+
+  <!-- UNIT3D -->
+  <div class="card">
+    <h2>🌐 Trackers UNIT3D</h2>
+    <p class="hint">Ajoutez vos trackers UNIT3D (URL + token API).</p>
+    <div class="indexer-list" id="unit3dList"></div>
+    <button class="btn sm ghost" style="margin-top:10px" onclick="addUnit3d()">+ Ajouter un tracker UNIT3D</button>
+  </div>
+
+  <!-- Torznab -->
+  <div class="card">
+    <h2>🗂️ Indexeurs Torznab (Jackett / Prowlarr)</h2>
+    <p class="hint">Accédez à des centaines de trackers via votre instance Jackett/Prowlarr.</p>
+    <div class="indexer-list" id="torznabList"></div>
+    <button class="btn sm ghost" style="margin-top:10px" onclick="addTorznab()">+ Ajouter un indexeur Torznab</button>
+  </div>
+
+  <!-- Filtres -->
+  <div class="card">
+    <h2>🎚️ Filtres</h2>
+    <div class="row">
+      <div>
+        <label>Taille min (Go)</label>
+        <input type="number" id="min_size" min="0" step="0.5" value="0">
+      </div>
+      <div>
+        <label>Taille max (Go)</label>
+        <input type="number" id="max_size" min="0" step="0.5" value="0">
+      </div>
+      <div>
+        <label>Résultats max</label>
+        <input type="number" id="max_results" min="1" value="30">
+      </div>
+      <div>
+        <label>Max / résolution</label>
+        <input type="number" id="max_per_res" min="0" value="0">
+      </div>
+    </div>
+
+    <label>Résolutions autorisées <span class="small">(rien = toutes)</span></label>
+    <div class="chips" id="resChips"></div>
+
+    <label>Codecs autorisés</label>
+    <div class="chips" id="codecChips"></div>
+
+    <label>Langues autorisées</label>
+    <div class="chips" id="langChips"></div>
+
+    <div style="margin-top:14px" class="grid2">
+      <label class="check"><input type="checkbox" id="exclude_cam" checked> Exclure les CAM/TS</label>
+      <label class="check"><input type="checkbox" id="exclude_packs"> Exclure les packs de saison</label>
+      <label class="check"><input type="checkbox" id="cached_only"> Uniquement en cache débrideur</label>
+      <label class="check"><input type="checkbox" id="show_uncached" checked> Afficher les non-cachés (ajout au débrideur)</label>
+      <label class="check"><input type="checkbox" id="show_p2p"> Afficher les liens P2P (sans débrideur)</label>
+    </div>
+  </div>
+
+  <!-- Tri -->
+  <div class="card">
+    <h2>↕️ Ordre de tri <span class="small">(glisser pour réordonner)</span></h2>
+    <p class="hint">Les critères sont appliqués de haut en bas.</p>
+    <div class="sortable" id="sortList"></div>
+    <div style="margin-top:14px" class="grid2">
+      <div>
+        <label>Priorité des langues</label>
+        <div class="sortable" id="langOrder"></div>
+      </div>
+      <div>
+        <label>Priorité des trackers <span class="small">(source)</span></label>
+        <div class="sortable" id="provOrder"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <div class="url-box" id="urlBox"></div>
+    <div class="row">
+      <button class="btn ghost" onclick="copyUrl()">📋 Copier l'URL du manifest</button>
+    </div>
+    <a class="install disabled" id="installBtn">➕ Installer dans Stremio</a>
+  </div>
+</div>
+
+<script>
+const APP_VERSION = "__APP_VERSION__";
+
+const PUBLIC_TRACKERS = [
+  { id: "ygg", label: "🐝 YGG (leak)" },
+  { id: "apibay", label: "🏴‍☠️ ThePirateBay" },
+  { id: "eztv", label: "📺 EZTV" },
+  { id: "nyaa", label: "🐈 Nyaa (anime)" },
+];
+const KEYED_TRACKERS = [
+  { id: "c411", label: "📡 C411", ph: "Clé API C411" },
+  { id: "torr9", label: "🔥 Torr9", ph: "Passkey Torr9" },
+  { id: "tr4ker", label: "🎯 Tr4ker", ph: "Clé API Tr4ker" },
+  { id: "nekobt", label: "🐾 NekoBT (anime)", ph: "Clé API NekoBT" },
+];
+const RESOLUTIONS = ["4K", "1080p", "720p", "SD"];
+const CODECS = ["x265", "x264", "AV1"];
+const LANGUAGES = ["MULTI", "VFF", "VF", "VFQ", "VOSTFR", "VO"];
+const SORT_LABELS = {
+  cached: "⚡ En cache d'abord", language: "🗣️ Langue", resolution: "📺 Résolution",
+  size_desc: "💾 Taille décroissante", size_asc: "💾 Taille croissante",
+  seeders: "👤 Seeders", tracker: "🌐 Tracker",
+};
+
+let debrids = [];      // [{service, key}]
+let unit3ds = [];      // [{url, key}]
+let torznabs = [];     // [{name, url, apikey}]
+let sortOrder = ["cached", "language", "resolution", "size_desc"];
+let langOrder = [...LANGUAGES];
+let provOrder = ["unit3d", "ygg", "c411", "torr9", "tr4ker", "abn", "torznab", "eztv", "apibay", "nyaa", "nekobt"];
+const selectedRes = new Set(), selectedCodec = new Set(), selectedLang = new Set();
+
+// ---- Rendu ----
+function renderPublic() {
+  const el = document.getElementById("publicTrackers");
+  el.innerHTML = "";
+  PUBLIC_TRACKERS.forEach(t => {
+    const lbl = document.createElement("label");
+    lbl.className = "check";
+    lbl.innerHTML = `<input type="checkbox" data-tracker="${t.id}" checked> ${t.label}`;
+    lbl.querySelector("input").addEventListener("change", update);
+    el.appendChild(lbl);
+  });
+}
+function renderKeyed() {
+  const el = document.getElementById("keyedTrackers");
+  el.innerHTML = "";
+  KEYED_TRACKERS.forEach(t => {
+    const wrap = document.createElement("div");
+    wrap.style.marginBottom = "8px";
+    wrap.innerHTML = `
+      <label class="check"><input type="checkbox" data-ktracker="${t.id}"> ${t.label}</label>
+      <div class="subfield" data-sub="${t.id}"><input type="password" data-kkey="${t.id}" placeholder="${t.ph}"></div>`;
+    const cb = wrap.querySelector("input[type=checkbox]");
+    cb.addEventListener("change", () => {
+      wrap.querySelector(".subfield").classList.toggle("show", cb.checked);
+      update();
+    });
+    wrap.querySelector("input[type=password]").addEventListener("input", update);
+    el.appendChild(wrap);
+  });
+}
+function renderDebrids() {
+  const el = document.getElementById("debridList");
+  el.innerHTML = "";
+  debrids.forEach((d, i) => {
+    const item = document.createElement("div");
+    item.className = "debrid-item";
+    item.draggable = true;
+    item.dataset.idx = i;
+    item.innerHTML = `
+      <div class="head">
+        <span class="prio" title="Glisser pour réordonner">⠿ ${i + 1}.</span>
+        <strong style="text-transform:capitalize">${d.service}</strong>
+        <button class="btn sm danger" style="margin-left:auto" data-del="${i}">✕</button>
+      </div>
+      <input type="password" data-dkey="${i}" placeholder="Clé API ${d.service}" value="${d.key || ''}">`;
+    item.querySelector("[data-del]").addEventListener("click", () => { debrids.splice(i, 1); renderDebrids(); update(); });
+    item.querySelector("[data-dkey]").addEventListener("input", e => { debrids[i].key = e.target.value; update(); });
+    addDragReorder(item, el, debrids, renderDebrids);
+    el.appendChild(item);
+  });
+}
+function addDebrid() {
+  const s = document.getElementById("debridSelect").value;
+  if (debrids.some(d => d.service === s)) return;
+  debrids.push({ service: s, key: "" });
+  renderDebrids(); update();
+}
+function renderUnit3d() {
+  const el = document.getElementById("unit3dList");
+  el.innerHTML = "";
+  unit3ds.forEach((u, i) => {
+    const item = document.createElement("div");
+    item.className = "indexer-item";
+    item.innerHTML = `
+      <div class="grid2">
+        <input type="text" data-uurl="${i}" placeholder="https://tracker.tld" value="${u.url || ''}">
+        <input type="password" data-ukey="${i}" placeholder="Token API" value="${u.key || ''}">
+      </div>
+      <button class="btn sm danger" style="margin-top:8px" data-udel="${i}">✕ Retirer</button>`;
+    item.querySelector("[data-uurl]").addEventListener("input", e => { unit3ds[i].url = e.target.value; update(); });
+    item.querySelector("[data-ukey]").addEventListener("input", e => { unit3ds[i].key = e.target.value; update(); });
+    item.querySelector("[data-udel]").addEventListener("click", () => { unit3ds.splice(i, 1); renderUnit3d(); update(); });
+    el.appendChild(item);
+  });
+}
+function addUnit3d() { unit3ds.push({ url: "", key: "" }); renderUnit3d(); }
+function renderTorznab() {
+  const el = document.getElementById("torznabList");
+  el.innerHTML = "";
+  torznabs.forEach((t, i) => {
+    const item = document.createElement("div");
+    item.className = "indexer-item";
+    item.innerHTML = `
+      <input type="text" data-tname="${i}" placeholder="Nom (ex: MonJackett)" value="${t.name || ''}" style="margin-bottom:8px">
+      <input type="text" data-turl="${i}" placeholder="URL Torznab (.../api ou /results/torznab)" value="${t.url || ''}" style="margin-bottom:8px">
+      <div class="grid2">
+        <input type="password" data-tkey="${i}" placeholder="API key" value="${t.apikey || ''}">
+        <button class="btn sm danger" data-tdel="${i}">✕ Retirer</button>
+      </div>`;
+    item.querySelector("[data-tname]").addEventListener("input", e => { torznabs[i].name = e.target.value; update(); });
+    item.querySelector("[data-turl]").addEventListener("input", e => { torznabs[i].url = e.target.value; update(); });
+    item.querySelector("[data-tkey]").addEventListener("input", e => { torznabs[i].apikey = e.target.value; update(); });
+    item.querySelector("[data-tdel]").addEventListener("click", () => { torznabs.splice(i, 1); renderTorznab(); update(); });
+    el.appendChild(item);
+  });
+}
+function addTorznab() { torznabs.push({ name: "", url: "", apikey: "" }); renderTorznab(); }
+
+function renderChips(containerId, values, set) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = "";
+  values.forEach(v => {
+    const c = document.createElement("span");
+    c.className = "chip";
+    c.textContent = v;
+    c.addEventListener("click", () => {
+      if (set.has(v)) { set.delete(v); c.classList.remove("on"); }
+      else { set.add(v); c.classList.add("on"); }
+      update();
+    });
+    el.appendChild(c);
+  });
+}
+function renderSortable(containerId, list, labelFn) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = "";
+  list.forEach((item, i) => {
+    const div = document.createElement("div");
+    div.className = "sort-item";
+    div.draggable = true;
+    div.dataset.idx = i;
+    div.innerHTML = `<span class="grip">⠿</span> ${labelFn(item)}`;
+    addDragReorder(div, el, list, () => renderSortable(containerId, list, labelFn));
+    el.appendChild(div);
+  });
+}
+
+// ---- Drag & drop réordonnancement ----
+let dragSrc = null;
+function addDragReorder(node, container, arr, rerender) {
+  node.addEventListener("dragstart", () => { dragSrc = node; node.style.opacity = ".4"; });
+  node.addEventListener("dragend", () => { node.style.opacity = "1"; });
+  node.addEventListener("dragover", e => e.preventDefault());
+  node.addEventListener("drop", e => {
+    e.preventDefault();
+    if (!dragSrc || dragSrc === node) return;
+    const from = +dragSrc.dataset.idx, to = +node.dataset.idx;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    rerender(); update();
+  });
+}
+
+// ---- Construction de la config ----
+function buildConfig() {
+  const trackers = [];
+  document.querySelectorAll("[data-tracker]").forEach(cb => { if (cb.checked) trackers.push(cb.dataset.tracker); });
+  const tracker_keys = {};
+  KEYED_TRACKERS.forEach(t => {
+    const cb = document.querySelector(`[data-ktracker="${t.id}"]`);
+    const key = document.querySelector(`[data-kkey="${t.id}"]`);
+    if (cb && cb.checked && key && key.value.trim()) {
+      trackers.push(t.id);
+      tracker_keys[t.id] = key.value.trim();
+    }
+  });
+
+  return {
+    tmdb_key: document.getElementById("tmdb_key").value.trim(),
+    debrids: debrids.filter(d => d.key && d.key.trim()).map(d => ({ service: d.service, key: d.key.trim() })),
+    debrid_mode: document.getElementById("debrid_mode").value,
+    stremthru: {
+      url: document.getElementById("stremthru_url").value.trim(),
+      auth: document.getElementById("stremthru_auth").value.trim(),
+    },
+    trackers,
+    tracker_keys,
+    abn: {
+      username: document.getElementById("abn_user").value.trim(),
+      password: document.getElementById("abn_pass").value.trim(),
+    },
+    unit3d: unit3ds.filter(u => u.url && u.key).map(u => ({ url: u.url.trim(), key: u.key.trim() })),
+    torznab: torznabs.filter(t => t.url).map(t => ({ name: t.name.trim() || "Torznab", url: t.url.trim(), apikey: (t.apikey || "").trim() })),
+    filters: {
+      min_size_gb: parseFloat(document.getElementById("min_size").value) || 0,
+      max_size_gb: parseFloat(document.getElementById("max_size").value) || 0,
+      resolutions: [...selectedRes],
+      codecs: [...selectedCodec],
+      languages: [...selectedLang],
+      exclude_cam: document.getElementById("exclude_cam").checked,
+      exclude_season_packs: document.getElementById("exclude_packs").checked,
+      max_results: parseInt(document.getElementById("max_results").value) || 30,
+      max_per_resolution: parseInt(document.getElementById("max_per_res").value) || 0,
+      cached_only: document.getElementById("cached_only").checked,
+      show_uncached: document.getElementById("show_uncached").checked,
+      show_p2p: document.getElementById("show_p2p").checked,
+    },
+    sort: sortOrder,
+    language_order: langOrder,
+    resolution_order: RESOLUTIONS,
+    providers_order: provOrder,
+  };
+}
+
+function b64url(obj) {
+  const json = JSON.stringify(obj);
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function update() {
+  const cfg = buildConfig();
+  const encoded = b64url(cfg);
+  const host = window.location.host;
+  const proto = window.location.protocol;
+  const manifestUrl = `${proto}//${host}/${encoded}/manifest.json`;
+  document.getElementById("urlBox").textContent = manifestUrl;
+
+  const btn = document.getElementById("installBtn");
+  const valid = cfg.debrids.length > 0 || cfg.filters.show_p2p;
+  btn.classList.toggle("disabled", !valid);
+  btn.href = valid ? `stremio://${host}/${encoded}/manifest.json` : "#";
+  window._manifestUrl = manifestUrl;
+}
+
+function copyUrl() {
+  const box = document.getElementById("urlBox");
+  box.style.display = "block";
+  navigator.clipboard.writeText(window._manifestUrl || "").then(() => {
+    const b = event.target; const t = b.textContent; b.textContent = "✅ Copié !";
+    setTimeout(() => b.textContent = t, 1500);
+  });
+}
+
+// ---- Init ----
+renderPublic();
+renderKeyed();
+renderDebrids();
+renderUnit3d();
+renderTorznab();
+renderChips("resChips", RESOLUTIONS, selectedRes);
+renderChips("codecChips", CODECS, selectedCodec);
+renderChips("langChips", LANGUAGES, selectedLang);
+renderSortable("sortList", sortOrder, k => SORT_LABELS[k] || k);
+renderSortable("langOrder", langOrder, k => k);
+renderSortable("provOrder", provOrder, k => k);
+["tmdb_key","stremthru_url","stremthru_auth","abn_user","abn_pass","debrid_mode",
+ "min_size","max_size","max_results","max_per_res","exclude_cam","exclude_packs",
+ "cached_only","show_uncached","show_p2p"].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener("input", update);
+  el.addEventListener("change", update);
+});
+update();
+</script>
+</body>
+</html>

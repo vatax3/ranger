@@ -1,8 +1,7 @@
 services:
   ranger:
     # Image pré-buildée par le CI GitHub Actions (aucun build local nécessaire).
-    # Le package est privé : sur le VPS, faire au préalable
-    #   echo <PAT_read:packages> | docker login ghcr.io -u vatax3 --password-stdin
+    # Package public : pull direct, aucune authentification requise.
     image: ghcr.io/vatax3/ranger:latest
     container_name: ranger
     restart: unless-stopped

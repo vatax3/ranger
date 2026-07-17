@@ -30,11 +30,9 @@
 
 ### Option A — image pré-buildée (recommandé, aucun build local)
 
-Le CI GitHub Actions publie l'image sur **ghcr.io** à chaque push sur `main`. Le package étant privé, connectez-vous d'abord avec un [PAT](https://github.com/settings/tokens) ayant le scope `read:packages` :
+Le CI GitHub Actions publie l'image publique sur **ghcr.io** à chaque push sur `main`. Aucune authentification n'est requise pour la pull :
 
 ```bash
-echo <PAT_read:packages> | docker login ghcr.io -u vatax3 --password-stdin
-
 # récupérez le docker-compose.ghcr.yml (ou clonez le repo), puis :
 docker compose -f docker-compose.ghcr.yml up -d
 ```

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ranger — Admin</title>
+<style>
+  :root {
+    --bg:#0f1115; --card:#181b22; --card2:#1f232c; --border:#2a2f3a; --text:#e6e8ec;
+    --muted:#9aa2b1; --accent:#7c5cff; --green:#22c55e; --red:#ef4444; --amber:#f59e0b; --radius:12px;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; line-height:1.5; }
+  .wrap { max-width:1000px; margin:0 auto; padding:24px 16px 80px; }
+  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:10px; }
+  h1 { font-size:1.8rem; margin:0; letter-spacing:-1px; } h1 .r { color:var(--accent); }
+  .badge { font-size:.72rem; color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:18px; }
+  .card h2 { font-size:1.05rem; margin:0 0 14px; display:flex; align-items:center; gap:8px; }
+  input[type=text],input[type=password] { width:100%; padding:10px 12px; background:var(--card2);
+    border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:.92rem; }
+  input:focus { outline:none; border-color:var(--accent); }
+  .btn { background:var(--accent); color:#fff; border:none; padding:10px 15px; border-radius:8px;
+    font-size:.9rem; font-weight:600; cursor:pointer; }
+  .btn.sm { padding:6px 11px; font-size:.8rem; }
+  .btn.ghost { background:transparent; border:1px solid var(--border); color:var(--text); }
+  .btn.red { background:transparent; border:1px solid var(--red); color:var(--red); }
+  .btn.amber { background:transparent; border:1px solid var(--amber); color:var(--amber); }
+  .grid { display:grid; gap:12px; }
+  .stats-grid { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+  .stat { background:var(--card2); border:1px solid var(--border); border-radius:10px; padding:14px; }
+  .stat .v { font-size:1.6rem; font-weight:700; }
+  .stat .l { color:var(--muted); font-size:.8rem; margin-top:2px; }
+  .stat .sub { color:var(--muted); font-size:.72rem; margin-top:4px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  table { width:100%; border-collapse:collapse; font-size:.84rem; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-weight:600; font-size:.76rem; text-transform:uppercase; letter-spacing:.5px; }
+  td.mono,.mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:.72rem; background:var(--card2); border:1px solid var(--border); }
+  .pill.cached { color:var(--green); border-color:var(--green); }
+  .pill.src { color:var(--accent); border-color:var(--accent); }
+  .tablewrap { overflow-x:auto; max-height:440px; overflow-y:auto; }
+  .muted { color:var(--muted); } .small { font-size:.8rem; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--card2);
+    border:1px solid var(--accent); color:var(--text); padding:12px 18px; border-radius:10px; display:none; z-index:10; }
+  .tabs { display:flex; gap:8px; margin-bottom:14px; }
+  .tab { padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--card2); cursor:pointer; font-size:.85rem; }
+  .tab.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .hidden { display:none; }
+  #gate { max-width:420px; margin:80px auto; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- Écran de connexion -->
+  <div id="gate" class="card">
+    <h1><span class="r">R</span>anger <span class="muted">admin</span></h1>
+    <p class="muted small">Entrez le token administrateur pour accéder au panel.</p>
+    <input type="password" id="tokenInput" placeholder="Token admin (RANGER_ADMIN_TOKEN)">
+    <button class="btn" style="margin-top:12px;width:100%" onclick="login()">Se connecter</button>
+    <p id="gateErr" class="small" style="color:var(--red);margin-top:10px"></p>
+    <p id="disabledMsg" class="small muted hidden" style="margin-top:12px">
+      ⚠️ Panel désactivé : la variable d'environnement <span class="mono">RANGER_ADMIN_TOKEN</span> n'est pas définie sur le serveur.
+    </p>
+  </div>
+
+  <!-- Panel -->
+  <div id="panel" class="hidden">
+    <header>
+      <h1><span class="r">R</span>anger <span class="muted">admin</span> <span class="badge">v__APP_VERSION__</span></h1>
+      <div class="row">
+        <button class="btn ghost sm" onclick="loadAll()">🔄 Rafraîchir</button>
+        <button class="btn ghost sm" onclick="logout()">Déconnexion</button>
+      </div>
+    </header>
+
+    <!-- Stats -->
+    <div class="card">
+      <h2>📊 Statistiques</h2>
+      <div class="grid stats-grid" id="statsGrid"></div>
+    </div>
+
+    <!-- Répartitions -->
+    <div class="grid" style="grid-template-columns:1fr 1fr; gap:18px">
+      <div class="card">
+        <h2>⚡ Disponibilité par débrideur</h2>
+        <div class="tablewrap"><table id="svcTable"><thead><tr><th>Débrideur</th><th>Total</th><th>En cache</th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>🌐 Recherches par source</h2>
+        <div class="tablewrap"><table id="srcTable"><thead><tr><th>Source</th><th>Entrées</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- Force refresh -->
+    <div class="card">
+      <h2>♻️ Forcer le refresh d'un média</h2>
+      <p class="muted small">Supprime les recherches et métadonnées en cache pour un IMDB ID. Au prochain fetch depuis Stremio, Ranger réinterroge les trackers et TMDB.</p>
+      <div class="row">
+        <input type="text" id="refreshImdb" placeholder="tt1234567" style="max-width:260px">
+        <button class="btn" onclick="forceRefresh()">♻️ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Explorateur de cache -->
+    <div class="card">
+      <h2>🗃️ Explorateur de cache</h2>
+      <div class="tabs">
+        <div class="tab on" data-tab="searches" onclick="switchTab('searches')">Recherches</div>
+        <div class="tab" data-tab="meta" onclick="switchTab('meta')">Métadonnées</div>
+      </div>
+
+      <div id="tab-searches">
+        <div class="row" style="margin-bottom:10px">
+          <input type="text" id="filterSearch" placeholder="Filtrer (imdb, source, type...)" style="max-width:280px" oninput="renderSearches()">
+          <span class="muted small" id="searchCount"></span>
+        </div>
+        <div class="tablewrap">
+          <table id="searchTable">
+            <thead><tr><th>Source</th><th>Type</th><th>IMDB</th><th>S/E</th><th>Âge</th><th>Expire dans</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tab-meta" class="hidden">
+        <div class="tablewrap">
+          <table id="metaTable">
+            <thead><tr><th>Clé</th><th>Âge</th><th>Expire dans</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone dangereuse -->
+    <div class="card">
+      <h2>🧹 Maintenance</h2>
+      <div class="row">
+        <button class="btn ghost sm" onclick="doCleanup()">Purger les entrées expirées</button>
+        <button class="btn amber sm" onclick="flush('searches')">Vider les recherches</button>
+        <button class="btn amber sm" onclick="flush('availability')">Vider la dispo débrideur</button>
+        <button class="btn amber sm" onclick="flush('meta')">Vider les métadonnées</button>
+        <button class="btn red sm" onclick="flush('all')">⚠️ Tout vider</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ADMIN_ENABLED = __ADMIN_ENABLED__;
+let TOKEN = localStorage.getItem("ranger_admin_token") || "";
+let searchesData = [];
+
+function toast(msg, ok=true) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.borderColor = ok ? "var(--accent)" : "var(--red)";
+  t.style.display = "block";
+  setTimeout(() => t.style.display = "none", 2600);
+}
+
+async function api(path, opts={}) {
+  opts.headers = Object.assign({ "X-Admin-Token": TOKEN, "Content-Type": "application/json" }, opts.headers || {});
+  const r = await fetch(path, opts);
+  if (r.status === 401) { logout(); throw new Error("Token invalide"); }
+  if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || ("HTTP " + r.status)); }
+  return r.json();
+}
+
+function fmtBytes(b) {
+  if (b >= 1e9) return (b/1e9).toFixed(2)+" Go";
+  if (b >= 1e6) return (b/1e6).toFixed(1)+" Mo";
+  if (b >= 1e3) return (b/1e3).toFixed(1)+" Ko";
+  return b+" o";
+}
+function fmtDuration(s) {
+  if (s < 60) return s+"s";
+  if (s < 3600) return Math.floor(s/60)+"m";
+  if (s < 86400) return Math.floor(s/3600)+"h"+Math.floor((s%3600)/60)+"m";
+  return Math.floor(s/86400)+"j"+Math.floor((s%86400)/3600)+"h";
+}
+
+async function login() {
+  TOKEN = document.getElementById("tokenInput").value.trim();
+  if (!TOKEN) return;
+  try {
+    await api("/admin/api/stats");
+    localStorage.setItem("ranger_admin_token", TOKEN);
+    showPanel();
+  } catch (e) {
+    document.getElementById("gateErr").textContent = e.message;
+  }
+}
+function logout() {
+  localStorage.removeItem("ranger_admin_token"); TOKEN = "";
+  document.getElementById("panel").classList.add("hidden");
+  document.getElementById("gate").classList.remove("hidden");
+}
+function showPanel() {
+  document.getElementById("gate").classList.add("hidden");
+  document.getElementById("panel").classList.remove("hidden");
+  loadAll();
+}
+
+async function loadAll() {
+  try {
+    const [stats, searches, meta] = await Promise.all([
+      api("/admin/api/stats"), api("/admin/api/searches?limit=500"), api("/admin/api/meta?limit=500"),
+    ]);
+    renderStats(stats);
+    searchesData = searches.searches;
+    renderSearches();
+    renderMeta(meta.meta);
+  } catch (e) { toast(e.message, false); }
+}
+
+function renderStats(s) {
+  const c = s.cache, m = c.metrics, rt = s.runtime;
+  const grid = document.getElementById("statsGrid");
+  grid.innerHTML = `
+    ${stat(fmtDuration(s.uptime_seconds), "Uptime")}
+    ${stat(fmtBytes(c.db_size_bytes), "Taille DB")}
+    ${stat(rt.stream_requests, "Requêtes stream", rt.streams_served + " streams servis")}
+    ${stat(rt.resolve_ok + "/" + rt.resolve_requests, "Résolutions OK")}
+    ${stat(c.availability.total, "Hashes en cache", c.availability.cached + " cachés / " + c.availability.uncached + " non")}
+    ${stat(c.searches.total, "Recherches en cache")}
+    ${stat(c.meta.total, "Métadonnées")}
+    ${stat(m.search_hit_rate + "%", "Hit-rate recherche", m.search_hit + " hits / " + m.search_miss + " miss")}
+    ${stat(m.avail_hit_rate + "%", "Hit-rate dispo", m.avail_hit + " hits / " + m.avail_miss + " miss")}
+  `;
+  const svc = document.querySelector("#svcTable tbody");
+  svc.innerHTML = c.availability.by_service.map(x =>
+    `<tr><td style="text-transform:capitalize">${x.service}</td><td>${x.total}</td><td><span class="pill cached">${x.cached}</span></td></tr>`
+  ).join("") || `<tr><td colspan="3" class="muted">Aucune donnée</td></tr>`;
+  const src = document.querySelector("#srcTable tbody");
+  src.innerHTML = c.searches.by_source.map(x =>
+    `<tr><td><span class="pill src">${x.source}</span></td><td>${x.total}</td></tr>`
+  ).join("") || `<tr><td colspan="2" class="muted">Aucune donnée</td></tr>`;
+}
+function stat(v, l, sub="") {
+  return `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`;
+}
+
+function renderSearches() {
+  const filter = document.getElementById("filterSearch").value.toLowerCase();
+  const rows = searchesData.filter(s => !filter || JSON.stringify(s).toLowerCase().includes(filter));
+  document.getElementById("searchCount").textContent = rows.length + " entrées";
+  const tbody = document.querySelector("#searchTable tbody");
+  tbody.innerHTML = rows.map(s => `
+    <tr>
+      <td><span class="pill src">${s.source||"?"}</span></td>
+      <td>${s.type||""}</td>
+      <td class="mono">${s.imdb||""}</td>
+      <td>${s.season?("S"+s.season+"E"+s.episode):"—"}</td>
+      <td class="muted">${fmtDuration(s.age_seconds)}</td>
+      <td class="muted">${fmtDuration(s.expires_in)}</td>
+      <td class="row">
+        ${s.imdb?`<button class="btn sm ghost" title="Refresh ce média" onclick="refreshImdbVal('${s.imdb}')">♻️</button>`:""}
+        <button class="btn sm red" title="Supprimer" onclick="delKey('searches','${escapeKey(s.key)}')">✕</button>
+      </td>
+    </tr>`).join("") || `<tr><td colspan="7" class="muted">Aucune entrée</td></tr>`;
+}
+function renderMeta(meta) {
+  const tbody = document.querySelector("#metaTable tbody");
+  tbody.innerHTML = meta.map(m => `
+    <tr>
+      <td class="mono">${m.key}</td>
+      <td class="muted">${fmtDuration(m.age_seconds)}</td>
+      <td class="muted">${fmtDuration(m.expires_in)}</td>
+      <td><button class="btn sm red" onclick="delKey('meta','${escapeKey(m.key)}')">✕</button></td>
+    </tr>`).join("") || `<tr><td colspan="4" class="muted">Aucune entrée</td></tr>`;
+}
+function escapeKey(k) { return k.replace(/'/g, "\\'"); }
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.tab === name));
+  document.getElementById("tab-searches").classList.toggle("hidden", name !== "searches");
+  document.getElementById("tab-meta").classList.toggle("hidden", name !== "meta");
+}
+
+function refreshImdbVal(imdb) { document.getElementById("refreshImdb").value = imdb; forceRefresh(); }
+async function forceRefresh() {
+  const imdb = document.getElementById("refreshImdb").value.trim();
+  if (!imdb) return;
+  try {
+    const r = await api("/admin/api/refresh", { method:"POST", body: JSON.stringify({ imdb }) });
+    toast(`Refresh ${imdb} : ${r.deleted.searches} recherches + ${r.deleted.meta} méta supprimées`);
+    loadAll();
+  } catch (e) { toast(e.message, false); }
+}
+async function delKey(table, key) {
+  try {
+    await api("/admin/api/delete", { method:"POST", body: JSON.stringify({ table, key }) });
+    toast("Entrée supprimée");
+    loadAll();
+  } catch (e) { toast(e.message, false); }
+}
+async function flush(table) {
+  const labels = { searches:"les recherches", availability:"la dispo débrideur", meta:"les métadonnées", all:"TOUT le cache" };
+  if (!confirm(`Vider ${labels[table]} ? Cette action est irréversible.`)) return;
+  try {
+    const r = await api("/admin/api/flush", { method:"POST", body: JSON.stringify({ table }) });
+    toast("Vidé : " + JSON.stringify(r.deleted));
+    loadAll();
+  } catch (e) { toast(e.message, false); }
+}
+async function doCleanup() {
+  try { await api("/admin/api/cleanup", { method:"POST", body:"{}" }); toast("Entrées expirées purgées"); loadAll(); }
+  catch (e) { toast(e.message, false); }
+}
+
+// Init
+if (!ADMIN_ENABLED) {
+  document.getElementById("disabledMsg").classList.remove("hidden");
+  document.getElementById("tokenInput").disabled = true;
+} else if (TOKEN) {
+  api("/admin/api/stats").then(showPanel).catch(() => { document.getElementById("gate").classList.remove("hidden"); });
+}
+document.getElementById("tokenInput").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+</script>
+</body>
+</html>

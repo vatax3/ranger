@@ -80,12 +80,25 @@ Toute la configuration est encodée dans l'URL du manifest (aucune donnée stock
 
 ---
 
+## 🛠️ Panel admin
+
+Accessible sur `/admin` dès que `RANGER_ADMIN_TOKEN` est défini (sinon le panel est désactivé). Protégé par ce token.
+
+- **Statistiques** : uptime, taille de la DB, requêtes stream / streams servis, résolutions, hit-rate du cache (recherches & disponibilité débrideur).
+- **Répartitions** : disponibilité par débrideur, recherches par source.
+- **Force-refresh d'un média** : saisir un IMDB ID supprime ses recherches et métadonnées en cache → le prochain fetch depuis Stremio réinterroge les trackers et TMDB. Idéal quand une release vient de sortir.
+- **Explorateur de cache** : liste des recherches (source, type, IMDB, saison/épisode, âge, expiration) et des métadonnées, avec suppression unitaire.
+- **Maintenance** : purge des entrées expirées, vidage sélectif (recherches / disponibilité / métadonnées) ou total.
+
+---
+
 ## 🔧 Variables d'environnement
 
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `PORT` | `7000` | Port d'écoute |
 | `RANGER_DB` | `/data/ranger.db` | Chemin de la base SQLite |
+| `RANGER_ADMIN_TOKEN` | — | Token du panel admin `/admin`. Non défini → panel désactivé. |
 | `RANGER_TTL_CACHED` | `21600` (6 h) | TTL cache « en cache » |
 | `RANGER_TTL_UNCACHED` | `1200` (20 min) | TTL cache « non caché » |
 | `RANGER_TTL_SEARCH` | `1800` (30 min) | TTL résultats de recherche |

@@ -9,6 +9,8 @@ services:
     environment:
       - PORT=7000
       - RANGER_DB=/data/ranger.db
+      # Token du panel admin (/admin) — sans lui le panel est désactivé
+      - RANGER_ADMIN_TOKEN=change-me
       # TTLs de cache (secondes) — décommenter pour surcharger
       # - RANGER_TTL_CACHED=21600
       # - RANGER_TTL_UNCACHED=1200

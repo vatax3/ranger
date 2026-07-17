@@ -15,6 +15,7 @@ v1 : films / séries / anime, contenu français comme étranger.
 import asyncio
 import logging
 import os
+import time
 
 import aiofiles
 import aiohttp
@@ -34,6 +35,18 @@ APP_VERSION = "1.0.0"
 ADDON_ID = "community.ranger.addon"
 PORT = int(os.getenv("PORT", "7000"))
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+
+# Token du panel admin (si non défini, le panel est désactivé)
+ADMIN_TOKEN = (os.getenv("RANGER_ADMIN_TOKEN") or "").strip()
+
+# Compteurs runtime (dashboard admin)
+RUNTIME = {
+    "started_at": time.time(),
+    "stream_requests": 0,
+    "streams_served": 0,
+    "resolve_requests": 0,
+    "resolve_ok": 0,
+}
 
 
 # ============================================================================
@@ -141,6 +154,7 @@ def _parse_stream_id(stream_id):
 
 
 async def handle_stream(request):
+    RUNTIME["stream_requests"] += 1
     config = decode_config(request.match_info.get("config", ""))
     if not config:
         return web.json_response({"streams": []})
@@ -197,6 +211,7 @@ async def handle_stream(request):
 
     # 7. Sérialisation en streams Stremio
     streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode)
+    RUNTIME["streams_served"] += len(streams)
     logging.info(f"{len(streams)} streams renvoyés à Stremio")
     return web.json_response({"streams": streams})
 
@@ -258,6 +273,7 @@ def _serialize_streams(entries, config_str, host_url, stream_type, season, episo
 # ============================================================================
 
 async def handle_resolve(request):
+    RUNTIME["resolve_requests"] += 1
     config = decode_config(request.match_info.get("config", ""))
     if not config:
         return web.Response(status=400, text="Config invalide")
@@ -280,8 +296,119 @@ async def handle_resolve(request):
         media_type=media_type,
     )
     if url:
+        RUNTIME["resolve_ok"] += 1
         raise web.HTTPFound(url)
     return web.Response(status=404, text="Impossible de résoudre le stream")
+
+
+# ============================================================================
+# Panel admin
+# ============================================================================
+
+def _admin_authorized(request):
+    """Vrai si le token admin est configuré et correspond."""
+    if not ADMIN_TOKEN:
+        return None  # panel désactivé
+    token = request.headers.get("X-Admin-Token") or request.query.get("token") or ""
+    return token == ADMIN_TOKEN
+
+
+def _require_admin(request):
+    """Retourne une web.Response d'erreur si non autorisé, sinon None."""
+    auth = _admin_authorized(request)
+    if auth is None:
+        return web.json_response({"error": "Panel admin désactivé (RANGER_ADMIN_TOKEN non défini)"}, status=503)
+    if not auth:
+        return web.json_response({"error": "Token admin invalide"}, status=401)
+    return None
+
+
+async def handle_admin_page(request):
+    try:
+        async with aiofiles.open(os.path.join(BASE_PATH, "templates", "admin.html"),
+                                 mode="r", encoding="utf-8") as f:
+            content = await f.read()
+        content = content.replace("__APP_VERSION__", APP_VERSION)
+        content = content.replace("__ADMIN_ENABLED__", "true" if ADMIN_TOKEN else "false")
+        return web.Response(text=content, content_type="text/html")
+    except Exception as e:
+        return web.Response(text=str(e), status=500)
+
+
+async def handle_admin_stats(request):
+    err = _require_admin(request)
+    if err is not None:
+        return err
+    uptime = int(time.time() - RUNTIME["started_at"])
+    return web.json_response({
+        "version": APP_VERSION,
+        "uptime_seconds": uptime,
+        "runtime": {k: v for k, v in RUNTIME.items() if k != "started_at"},
+        "cache": cache.stats(),
+    })
+
+
+async def handle_admin_searches(request):
+    err = _require_admin(request)
+    if err is not None:
+        return err
+    limit = int(request.query.get("limit", "300"))
+    return web.json_response({"searches": cache.list_searches(limit)})
+
+
+async def handle_admin_meta(request):
+    err = _require_admin(request)
+    if err is not None:
+        return err
+    limit = int(request.query.get("limit", "300"))
+    return web.json_response({"meta": cache.list_meta(limit)})
+
+
+async def handle_admin_refresh(request):
+    err = _require_admin(request)
+    if err is not None:
+        return err
+    body = await request.json()
+    imdb = (body.get("imdb") or "").strip()
+    if not imdb:
+        return web.json_response({"error": "imdb requis"}, status=400)
+    deleted = cache.refresh_media(imdb)
+    logging.info(f"Admin: refresh {imdb} -> {deleted}")
+    return web.json_response({"deleted": deleted})
+
+
+async def handle_admin_delete(request):
+    err = _require_admin(request)
+    if err is not None:
+        return err
+    body = await request.json()
+    table = body.get("table")
+    key = body.get("key")
+    if not table or not key:
+        return web.json_response({"error": "table et key requis"}, status=400)
+    n = cache.delete_key(table, key)
+    return web.json_response({"deleted": n})
+
+
+async def handle_admin_flush(request):
+    err = _require_admin(request)
+    if err is not None:
+        return err
+    body = await request.json()
+    table = body.get("table", "")
+    if table not in ("searches", "availability", "meta", "all"):
+        return web.json_response({"error": "table invalide"}, status=400)
+    deleted = cache.flush(table)
+    logging.info(f"Admin: flush {table} -> {deleted}")
+    return web.json_response({"deleted": deleted})
+
+
+async def handle_admin_cleanup(request):
+    err = _require_admin(request)
+    if err is not None:
+        return err
+    cache.cleanup()
+    return web.json_response({"status": "ok"})
 
 
 # ============================================================================
@@ -323,6 +450,16 @@ def get_app():
     app.router.add_get("/health", handle_health)
     app.router.add_get("/manifest.json", handle_manifest_no_config)
     app.router.add_get("/stream/{type}/{id}.json", handle_stream_no_config)
+
+    # Panel admin
+    app.router.add_get("/admin", handle_admin_page)
+    app.router.add_get("/admin/api/stats", handle_admin_stats)
+    app.router.add_get("/admin/api/searches", handle_admin_searches)
+    app.router.add_get("/admin/api/meta", handle_admin_meta)
+    app.router.add_post("/admin/api/refresh", handle_admin_refresh)
+    app.router.add_post("/admin/api/delete", handle_admin_delete)
+    app.router.add_post("/admin/api/flush", handle_admin_flush)
+    app.router.add_post("/admin/api/cleanup", handle_admin_cleanup)
 
     app.router.add_get("/{config}/configure", handle_configure)
     app.router.add_get("/{config}/manifest.json", handle_manifest)

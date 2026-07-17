@@ -1,0 +1,26 @@
+services:
+  ranger:
+    # Image pré-buildée par le CI GitHub Actions (aucun build local nécessaire).
+    # Le package est privé : sur le VPS, faire au préalable
+    #   echo <PAT_read:packages> | docker login ghcr.io -u vatax3 --password-stdin
+    image: ghcr.io/vatax3/ranger:latest
+    container_name: ranger
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "7000:7000"
+    environment:
+      - PORT=7000
+      - RANGER_DB=/data/ranger.db
+      # TTLs de cache (secondes) — décommenter pour surcharger
+      # - RANGER_TTL_CACHED=21600
+      # - RANGER_TTL_UNCACHED=1200
+      # - RANGER_TTL_SEARCH=1800
+      # Proxy sortant optionnel (si l'IP du VPS est bloquée sans StremThru)
+      # - HTTP_PROXY=http://user:pass@proxyhost:port
+      # - HTTPS_PROXY=http://user:pass@proxyhost:port
+    volumes:
+      - ranger_data:/data
+
+volumes:
+  ranger_data:

@@ -28,8 +28,23 @@
 
 ## 🚀 Déploiement (VPS, Docker)
 
+### Option A — image pré-buildée (recommandé, aucun build local)
+
+Le CI GitHub Actions publie l'image sur **ghcr.io** à chaque push sur `main`. Le package étant privé, connectez-vous d'abord avec un [PAT](https://github.com/settings/tokens) ayant le scope `read:packages` :
+
 ```bash
-git clone <votre-repo> ranger && cd ranger
+echo <PAT_read:packages> | docker login ghcr.io -u vatax3 --password-stdin
+
+# récupérez le docker-compose.ghcr.yml (ou clonez le repo), puis :
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+Pour mettre à jour : `docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d`.
+
+### Option B — build depuis les sources
+
+```bash
+git clone https://github.com/vatax3/ranger.git && cd ranger
 docker compose up -d --build
 ```
 

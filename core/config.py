@@ -60,7 +60,7 @@ DEFAULT_CONFIG = {
         "exclude_cam": True,
         "exclude_season_packs": False,
         "max_results": 30,            # nombre max de streams renvoyés
-        "max_per_resolution": 0,      # 0 = illimité
+        "max_per_resolution": 10,     # 0 = illimité
         "cached_only": False,         # ne montre que les torrents en cache débrideur
         "show_uncached": True,        # affiche les non-cachés (clic = ajout au débrideur)
         "show_p2p": False,            # streams P2P via le moteur torrent de Stremio (sans débrideur)

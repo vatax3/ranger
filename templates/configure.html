@@ -187,8 +187,8 @@
         <input type="number" id="max_results" min="1" value="30">
       </div>
       <div>
-        <label>Max / résolution</label>
-        <input type="number" id="max_per_res" min="0" value="0">
+        <label>Max / résolution <span class="small">(0 = illimité)</span></label>
+        <input type="number" id="max_per_res" min="0" value="10">
       </div>
     </div>
 
@@ -210,7 +210,6 @@
     <div style="margin-top:14px" class="grid2">
       <label class="check"><input type="checkbox" id="exclude_cam" checked> Exclure les CAM/TS</label>
       <label class="check"><input type="checkbox" id="exclude_packs"> Exclure les packs de saison</label>
-      <label class="check"><input type="checkbox" id="show_p2p"> Afficher les liens P2P (sans débrideur)</label>
     </div>
   </div>
 
@@ -471,7 +470,7 @@ function buildConfig() {
       max_per_resolution: parseInt(document.getElementById("max_per_res").value) || 0,
       cached_only: document.getElementById("cache_mode").value === "cached",
       show_uncached: document.getElementById("cache_mode").value === "all",
-      show_p2p: document.getElementById("show_p2p").checked,
+      show_p2p: false,
     },
     sort: sortOrder,
     language_order: langOrder,
@@ -495,7 +494,7 @@ function update() {
   document.getElementById("urlBox").textContent = manifestUrl;
 
   const btn = document.getElementById("installBtn");
-  const valid = cfg.debrids.length > 0 || cfg.filters.show_p2p;
+  const valid = cfg.debrids.length > 0;
   btn.classList.toggle("disabled", !valid);
   btn.href = valid ? `stremio://${host}/${encoded}/manifest.json` : "#";
   window._manifestUrl = manifestUrl;
@@ -540,7 +539,7 @@ function applyPrefill(cfg) {
   setVal("min_size", f.min_size_gb); setVal("max_size", f.max_size_gb);
   setVal("max_results", f.max_results); setVal("max_per_res", f.max_per_resolution);
   setChk("exclude_cam", f.exclude_cam); setChk("exclude_packs", f.exclude_season_packs);
-  setVal("cache_mode", f.cached_only ? "cached" : "all"); setChk("show_p2p", f.show_p2p);
+  setVal("cache_mode", f.cached_only ? "cached" : "all");
 }
 
 function applyPrefillCheckboxes(cfg) {
@@ -579,7 +578,7 @@ renderSortable("provOrder", provOrder, k => SOURCE_LABELS[k] || k);
 applyPrefillCheckboxes(PREFILL);
 ["tmdb_key","stremthru_url","stremthru_auth","abn_user","abn_pass","debrid_mode",
  "min_size","max_size","max_results","max_per_res","exclude_cam","exclude_packs",
- "cache_mode","show_p2p"].forEach(id => {
+ "cache_mode"].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener("input", update);
   el.addEventListener("change", update);

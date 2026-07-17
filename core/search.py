@@ -62,93 +62,97 @@ async def run_search(config, media_info, stream_type, imdb_id, tmdb_id, season, 
     def add(source, factory):
         tasks.append(_cached_search(source, factory, stream_type, imdb_id, season, episode))
 
+    # NB : chaque lambda binde son service via `s=<svc>` (argument par défaut).
+    # Sans ce binding, toutes les closures partageraient la même variable et
+    # taperaient le dernier tracker construit (bug de capture par référence).
+
     # --- UNIT3D (multi-trackers privés) ---
     unit3d_cfg = [
         {"url": t["url"].rstrip("/"), "token": t.get("key", ""), "categories": []}
         for t in (config.get("unit3d") or []) if t.get("url") and t.get("key")
     ]
     if unit3d_cfg:
-        svc = Unit3DService(unit3d_cfg)
-        add("unit3d", lambda: svc.search_all(
+        s = Unit3DService(unit3d_cfg)
+        add("unit3d", lambda s=s: s.search_all(
             tmdb_id=tmdb_id, imdb_id=imdb_id, type=stream_type, season=season, episode=episode))
 
     # --- YGG (public, relais Nostr yggleak) ---
     if "ygg" in trackers:
-        svc = YggService()
+        s = YggService()
         if stream_type == "movie":
-            add("ygg", lambda: svc.search_movie(title, year, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("ygg", lambda s=s: s.search_movie(title, year, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
         else:
-            add("ygg", lambda: svc.search_series(title, season, episode, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("ygg", lambda s=s: s.search_series(title, season, episode, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
 
     # --- ABN (login/mot de passe) ---
     abn_cfg = config.get("abn") or {}
     if abn_cfg.get("username") and abn_cfg.get("password"):
         abn_service = ABNService(username=abn_cfg["username"], password=abn_cfg["password"])
         if stream_type == "movie":
-            add("abn", lambda: abn_service.search_movie(title, year, original_title=original_title))
+            add("abn", lambda s=abn_service: s.search_movie(title, year, original_title=original_title))
         else:
-            add("abn", lambda: abn_service.search_series(title, season, episode, original_title=original_title))
+            add("abn", lambda s=abn_service: s.search_series(title, season, episode, original_title=original_title))
 
     # --- C411 (clé API) ---
     if "c411" in trackers and keys.get("c411"):
-        svc = C411Service(keys["c411"])
+        s = C411Service(keys["c411"])
         if stream_type == "movie":
-            add("c411", lambda: svc.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("c411", lambda s=s: s.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
         else:
-            add("c411", lambda: svc.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("c411", lambda s=s: s.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
 
     # --- Torr9 (passkey Torznab) ---
     if "torr9" in trackers and keys.get("torr9"):
-        svc = Torr9Service(keys["torr9"])
+        s = Torr9Service(keys["torr9"])
         if stream_type == "movie":
-            add("torr9", lambda: svc.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("torr9", lambda s=s: s.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
         else:
-            add("torr9", lambda: svc.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("torr9", lambda s=s: s.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
 
     # --- Tr4ker (clé API) ---
     if "tr4ker" in trackers and keys.get("tr4ker"):
-        svc = Tr4kerService(keys["tr4ker"])
+        s = Tr4kerService(keys["tr4ker"])
         if stream_type == "movie":
-            add("tr4ker", lambda: svc.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("tr4ker", lambda s=s: s.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
         else:
-            add("tr4ker", lambda: svc.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("tr4ker", lambda s=s: s.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
 
     # --- apibay / ThePirateBay (public, VO) ---
     if "apibay" in trackers:
-        svc = ApibayService()
+        s = ApibayService()
         if stream_type == "movie":
-            add("apibay", lambda: svc.search_movie(title, year, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("apibay", lambda s=s: s.search_movie(title, year, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
         else:
-            add("apibay", lambda: svc.search_series(title, season, episode, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("apibay", lambda s=s: s.search_series(title, season, episode, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
 
     # --- EZTV (public, séries VO) ---
     if "eztv" in trackers and stream_type == "series":
-        svc = EztvService()
-        add("eztv", lambda: svc.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
+        s = EztvService()
+        add("eztv", lambda s=s: s.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id))
 
     # --- Torznab (Jackett/Prowlarr : trackers publics & privés) ---
     torznab_cfg = config.get("torznab") or []
     if torznab_cfg:
-        svc = TorznabService(torznab_cfg)
+        s = TorznabService(torznab_cfg)
         if stream_type == "movie":
-            add("torznab", lambda: svc.search_movie(title, year, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("torznab", lambda s=s: s.search_movie(title, year, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
         else:
-            add("torznab", lambda: svc.search_series(title, season, episode, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
+            add("torznab", lambda s=s: s.search_series(title, season, episode, original_title=original_title, imdb_id=imdb_id, tmdb_id=tmdb_id))
 
     # --- Trackers anime (uniquement si le média est un anime) ---
     if is_anime:
         if "nekobt" in trackers and keys.get("nekobt"):
-            svc = NekoBTService(keys["nekobt"])
+            s = NekoBTService(keys["nekobt"])
             if stream_type == "movie":
-                add("nekobt", lambda: svc.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
+                add("nekobt", lambda s=s: s.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
             else:
-                add("nekobt", lambda: svc.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id, absolute_episode=absolute_episode))
+                add("nekobt", lambda s=s: s.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id, absolute_episode=absolute_episode))
         if "nyaa" in trackers:
-            svc = NyaaService()
+            s = NyaaService()
             if stream_type == "movie":
-                add("nyaa", lambda: svc.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
+                add("nyaa", lambda s=s: s.search_movie(title, year, imdb_id=imdb_id, tmdb_id=tmdb_id))
             else:
-                add("nyaa", lambda: svc.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id, absolute_episode=absolute_episode))
+                add("nyaa", lambda s=s: s.search_series(title, season, episode, imdb_id=imdb_id, tmdb_id=tmdb_id, absolute_episode=absolute_episode))
 
     if not tasks:
         return []

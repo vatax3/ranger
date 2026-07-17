@@ -37,7 +37,7 @@ def _tracker_label(torrent):
     return label
 
 
-def _description(torrent):
+def _description(torrent, prefix=None):
     meta = torrent["_meta"]
     tech = []
     if meta["resolution"]:
@@ -58,6 +58,8 @@ def _description(torrent):
     stats.append(_tracker_label(torrent))
 
     lines = []
+    if prefix:
+        lines.append(prefix)
     if tech:
         lines.append(" | ".join(tech))
     if meta["lang_display"]:
@@ -79,6 +81,22 @@ def _behavior_hints(torrent, service=None):
     return hints
 
 
+def _stream_meta_fields(torrent):
+    """
+    Champs de métadonnées top-level, lus par AIOStreams pour le parsing/filtrage
+    (repris de Frenchio). En complément des tags dans le nom.
+    """
+    meta = torrent["_meta"]
+    return {
+        "size": torrent.get("size", 0),
+        "seeders": torrent.get("seeders", 0) or 0,
+        "quality": meta["resolution"],
+        "codec": meta["codec"],
+        "release_type": meta["source"],
+        "language": ", ".join(meta["languages"]),
+    }
+
+
 def build_debrid_stream(torrent, service, cached, resolve_url):
     """Stream débrideur (caché ou non). resolve_url : URL /resolve à la lecture."""
     meta = torrent["_meta"]
@@ -86,25 +104,34 @@ def build_debrid_stream(torrent, service, cached, resolve_url):
     status = f"[{tag}+]" if cached else f"[{tag} download]"
     res = f" {meta['resolution']}" if meta["resolution"] else ""
 
-    description = _description(torrent)
-    if not cached:
-        description = "📥 Non caché — lecture = ajout au débrideur\n" + description
+    prefix = None if cached else "📥 Non caché — lecture = ajout au débrideur"
+    description = _description(torrent, prefix=prefix)
 
-    return {
+    stream = {
+        # Le tag [XX+] (convention Torrentio) permet à AIOStreams d'identifier
+        # le service et le statut de cache.
         "name": f"Ranger {status}{res}",
+        # title + description : compat parsers récents (description) et anciens (title)
+        "title": description,
         "description": description,
         "url": resolve_url,
         "behaviorHints": _behavior_hints(torrent, service),
     }
+    stream.update(_stream_meta_fields(torrent))
+    return stream
 
 
 def build_p2p_stream(torrent):
     """Stream P2P via le moteur torrent intégré de Stremio (sans débrideur)."""
     meta = torrent["_meta"]
     res = f" {meta['resolution']}" if meta["resolution"] else ""
-    return {
+    description = _description(torrent)
+    stream = {
         "name": f"Ranger [P2P]{res}",
-        "description": _description(torrent),
+        "title": description,
+        "description": description,
         "infoHash": torrent["info_hash"],
         "behaviorHints": _behavior_hints(torrent),
     }
+    stream.update(_stream_meta_fields(torrent))
+    return stream

@@ -88,6 +88,18 @@ async def handle_configure(request):
                                  mode="r", encoding="utf-8") as f:
             content = await f.read()
         content = content.replace("__APP_VERSION__", APP_VERSION)
+
+        # Persistance : si une config est présente dans l'URL, on la ré-injecte
+        # pour pré-remplir le formulaire (clés API, trackers, filtres, tri...).
+        import json as _json
+        prefill = "null"
+        config_str = request.match_info.get("config", "")
+        if config_str:
+            decoded = decode_config(config_str)
+            if decoded:
+                prefill = _json.dumps(decoded)
+        content = content.replace("const PREFILL = null;", f"const PREFILL = {prefill};")
+
         return web.Response(text=content, content_type="text/html")
     except Exception as e:
         logging.error(f"configure error: {e}")
@@ -98,13 +110,29 @@ async def handle_configure(request):
 # Manifest
 # ============================================================================
 
-def _manifest(configured):
+# Logo de l'addon : "R" violet sur fond sombre arrondi (reflète la homepage web)
+LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="56" fill="#0f1115"/>
+  <rect x="6" y="6" width="244" height="244" rx="52" fill="none" stroke="#7c5cff" stroke-width="4" opacity="0.35"/>
+  <text x="50%" y="52%" dominant-baseline="central" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="170" font-weight="800" fill="#7c5cff">R</text>
+</svg>"""
+
+
+def _logo_url(request):
+    return f"{request.scheme}://{request.host}/logo.svg"
+
+
+def _manifest(configured, request):
+    logo = _logo_url(request)
     return {
         "id": ADDON_ID,
         "version": APP_VERSION,
         "name": "Ranger",
         "description": "Addon ultime multi-trackers / multi-débrideurs (FR & international) — films, séries, anime.",
-        "logo": "https://i.imgur.com/MgdGxnR.png",
+        "logo": logo,
+        "icon": logo,
         "types": ["movie", "series"],
         "catalogs": [],
         "resources": ["stream"],
@@ -116,15 +144,20 @@ def _manifest(configured):
     }
 
 
+async def handle_logo(request):
+    return web.Response(body=LOGO_SVG.encode("utf-8"), content_type="image/svg+xml",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
 async def handle_manifest_no_config(request):
-    return web.json_response(_manifest(configured=False))
+    return web.json_response(_manifest(configured=False, request=request))
 
 
 async def handle_manifest(request):
     config = decode_config(request.match_info.get("config", ""))
     if not config:
-        return web.json_response(_manifest(configured=False))
-    return web.json_response(_manifest(configured=True))
+        return web.json_response(_manifest(configured=False, request=request))
+    return web.json_response(_manifest(configured=True, request=request))
 
 
 async def handle_stream_no_config(request):
@@ -447,6 +480,7 @@ def get_app():
     app = web.Application(middlewares=[cors_middleware])
     app.router.add_get("/", handle_configure)
     app.router.add_get("/configure", handle_configure)
+    app.router.add_get("/logo.svg", handle_logo)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/manifest.json", handle_manifest_no_config)
     app.router.add_get("/stream/{type}/{id}.json", handle_stream_no_config)

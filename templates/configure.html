@@ -257,8 +257,17 @@ const LANGUAGES = ["MULTI", "VFF", "VF", "VFQ", "VOSTFR", "VO"];
 const SORT_LABELS = {
   cached: "⚡ En cache d'abord", language: "🗣️ Langue", resolution: "📺 Résolution",
   size_desc: "💾 Taille décroissante", size_asc: "💾 Taille croissante",
-  seeders: "👤 Seeders", tracker: "🌐 Tracker",
+  seeders: "👤 Seeders", tracker: "🌐 Priorité tracker",
 };
+// Noms lisibles des sources (priorité d'affichage des trackers)
+const SOURCE_LABELS = {
+  ygg:"🐝 YGG", apibay:"🏴‍☠️ ThePirateBay", eztv:"📺 EZTV", nyaa:"🐈 Nyaa",
+  c411:"📡 C411", torr9:"🔥 Torr9", tr4ker:"🎯 Tr4ker", nekobt:"🐾 NekoBT",
+  abn:"🎬 ABN", unit3d:"🌐 UNIT3D", torznab:"🗂️ Torznab",
+};
+
+// Config pré-remplie (injectée par le serveur depuis l'URL du manifest)
+const PREFILL = null;
 
 let debrids = [];      // [{service, key}]
 let unit3ds = [];      // [{url, key}]
@@ -376,7 +385,7 @@ function renderChips(containerId, values, set) {
   el.innerHTML = "";
   values.forEach(v => {
     const c = document.createElement("span");
-    c.className = "chip";
+    c.className = set.has(v) ? "chip on" : "chip";
     c.textContent = v;
     c.addEventListener("click", () => {
       if (set.has(v)) { set.delete(v); c.classList.remove("on"); }
@@ -497,7 +506,61 @@ function copyUrl() {
   });
 }
 
+// ---- Persistance : appliquer la config pré-remplie ----
+function applyPrefill(cfg) {
+  if (!cfg) return;
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el != null && v != null) el.value = v; };
+  const setChk = (id, v) => { const el = document.getElementById(id); if (el != null && v != null) el.checked = !!v; };
+
+  // État (avant rendu)
+  if (Array.isArray(cfg.debrids)) debrids = cfg.debrids.map(d => ({ service:d.service, key:d.key||"", stremthru: d.stremthru !== false }));
+  if (Array.isArray(cfg.unit3d)) unit3ds = cfg.unit3d.map(u => ({ url:u.url||"", key:u.key||"" }));
+  if (Array.isArray(cfg.torznab)) torznabs = cfg.torznab.map(t => ({ name:t.name||"", url:t.url||"", apikey:t.apikey||"" }));
+  if (Array.isArray(cfg.sort) && cfg.sort.length) sortOrder = cfg.sort.slice();
+  if (Array.isArray(cfg.language_order) && cfg.language_order.length) langOrder = cfg.language_order.slice();
+  if (Array.isArray(cfg.providers_order) && cfg.providers_order.length) {
+    // On garde l'ordre sauvegardé, en ajoutant les sources manquantes à la fin
+    const saved = cfg.providers_order.filter(s => provOrder.includes(s));
+    provOrder = saved.concat(provOrder.filter(s => !saved.includes(s)));
+  }
+  const f = cfg.filters || {};
+  (f.resolutions || []).forEach(r => selectedRes.add(r));
+  (f.codecs || []).forEach(c => selectedCodec.add(c));
+  (f.languages || []).forEach(l => selectedLang.add(l));
+
+  // Champs simples
+  setVal("tmdb_key", cfg.tmdb_key);
+  setVal("debrid_mode", cfg.debrid_mode);
+  if (cfg.stremthru) { setVal("stremthru_url", cfg.stremthru.url); setVal("stremthru_auth", cfg.stremthru.auth); }
+  if (cfg.abn) { setVal("abn_user", cfg.abn.username); setVal("abn_pass", cfg.abn.password); }
+  setVal("min_size", f.min_size_gb); setVal("max_size", f.max_size_gb);
+  setVal("max_results", f.max_results); setVal("max_per_res", f.max_per_resolution);
+  setChk("exclude_cam", f.exclude_cam); setChk("exclude_packs", f.exclude_season_packs);
+  setChk("cached_only", f.cached_only); setChk("show_uncached", f.show_uncached); setChk("show_p2p", f.show_p2p);
+}
+
+function applyPrefillCheckboxes(cfg) {
+  if (!cfg || !Array.isArray(cfg.trackers)) return;
+  // Trackers publics
+  document.querySelectorAll("[data-tracker]").forEach(cb => {
+    cb.checked = cfg.trackers.includes(cb.dataset.tracker);
+  });
+  // Trackers à clé
+  const keys = cfg.tracker_keys || {};
+  document.querySelectorAll("[data-ktracker]").forEach(cb => {
+    const id = cb.dataset.ktracker;
+    if (cfg.trackers.includes(id) || keys[id]) {
+      cb.checked = true;
+      const sub = document.querySelector(`[data-sub="${id}"]`);
+      if (sub) sub.classList.add("show");
+    }
+    const keyInput = document.querySelector(`[data-kkey="${id}"]`);
+    if (keyInput && keys[id]) keyInput.value = keys[id];
+  });
+}
+
 // ---- Init ----
+applyPrefill(PREFILL);
 renderPublic();
 renderKeyed();
 renderDebrids();
@@ -508,7 +571,8 @@ renderChips("codecChips", CODECS, selectedCodec);
 renderChips("langChips", LANGUAGES, selectedLang);
 renderSortable("sortList", sortOrder, k => SORT_LABELS[k] || k);
 renderSortable("langOrder", langOrder, k => k);
-renderSortable("provOrder", provOrder, k => k);
+renderSortable("provOrder", provOrder, k => SOURCE_LABELS[k] || k);
+applyPrefillCheckboxes(PREFILL);
 ["tmdb_key","stremthru_url","stremthru_auth","abn_user","abn_pass","debrid_mode",
  "min_size","max_size","max_results","max_per_res","exclude_cam","exclude_packs",
  "cached_only","show_uncached","show_p2p"].forEach(id => {

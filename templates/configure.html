@@ -306,15 +306,20 @@ function renderDebrids() {
     item.className = "debrid-item";
     item.draggable = true;
     item.dataset.idx = i;
+    const stChecked = d.stremthru !== false ? "checked" : "";
     item.innerHTML = `
       <div class="head">
         <span class="prio" title="Glisser pour réordonner">⠿ ${i + 1}.</span>
         <strong style="text-transform:capitalize">${d.service}</strong>
         <button class="btn sm danger" style="margin-left:auto" data-del="${i}">✕</button>
       </div>
-      <input type="password" data-dkey="${i}" placeholder="Clé API ${d.service}" value="${d.key || ''}">`;
+      <input type="password" data-dkey="${i}" placeholder="Clé API ${d.service}" value="${d.key || ''}">
+      <label class="check" style="margin-top:8px" title="Router ce débrideur via l'instance StremThru configurée plus bas">
+        <input type="checkbox" data-dst="${i}" ${stChecked}> 🛰️ Via StremThru
+      </label>`;
     item.querySelector("[data-del]").addEventListener("click", () => { debrids.splice(i, 1); renderDebrids(); update(); });
     item.querySelector("[data-dkey]").addEventListener("input", e => { debrids[i].key = e.target.value; update(); });
+    item.querySelector("[data-dst]").addEventListener("change", e => { debrids[i].stremthru = e.target.checked; update(); });
     addDragReorder(item, el, debrids, renderDebrids);
     el.appendChild(item);
   });
@@ -322,7 +327,7 @@ function renderDebrids() {
 function addDebrid() {
   const s = document.getElementById("debridSelect").value;
   if (debrids.some(d => d.service === s)) return;
-  debrids.push({ service: s, key: "" });
+  debrids.push({ service: s, key: "", stremthru: true });
   renderDebrids(); update();
 }
 function renderUnit3d() {
@@ -427,7 +432,7 @@ function buildConfig() {
 
   return {
     tmdb_key: document.getElementById("tmdb_key").value.trim(),
-    debrids: debrids.filter(d => d.key && d.key.trim()).map(d => ({ service: d.service, key: d.key.trim() })),
+    debrids: debrids.filter(d => d.key && d.key.trim()).map(d => ({ service: d.service, key: d.key.trim(), stremthru: d.stremthru !== false })),
     debrid_mode: document.getElementById("debrid_mode").value,
     stremthru: {
       url: document.getElementById("stremthru_url").value.trim(),

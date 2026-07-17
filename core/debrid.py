@@ -110,12 +110,17 @@ class DebridBackend:
 
 
 def build_backends(config, client_ip=None):
-    """Construit les DebridBackend dans l'ordre de priorité de la config."""
+    """Construit les DebridBackend dans l'ordre de priorité de la config.
+
+    StremThru est appliqué par débrideur : un service dont la case StremThru
+    est décochée utilise son API native même si une URL StremThru est configurée.
+    """
     from core.config import get_debrids
-    stremthru = config.get("stremthru") or {}
+    global_stremthru = config.get("stremthru") or {}
     backends = []
-    for service, key in get_debrids(config):
+    for service, key, use_stremthru in get_debrids(config):
         try:
+            stremthru = global_stremthru if use_stremthru else None
             backends.append(DebridBackend(service, key, stremthru=stremthru, client_ip=client_ip))
         except Exception as e:
             logging.error(f"Impossible d'initialiser {service}: {e}")

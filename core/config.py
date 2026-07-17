@@ -113,13 +113,18 @@ def encode_config(config):
 
 
 def get_debrids(config):
-    """Liste [(service, key)] dans l'ordre de priorité, entrées valides uniquement."""
+    """
+    Liste [(service, key, use_stremthru)] dans l'ordre de priorité, entrées
+    valides uniquement. use_stremthru : router ce débrideur via StremThru
+    (défaut True pour compat — décochable par débrideur dans la config).
+    """
     out = []
     seen = set()
     for entry in config.get("debrids", []):
         service = (entry.get("service") or "").strip().lower()
         key = (entry.get("key") or "").strip()
         if service in DEBRID_SERVICES and key and service not in seen:
-            out.append((service, key))
+            use_stremthru = entry.get("stremthru", True)
+            out.append((service, key, bool(use_stremthru)))
             seen.add(service)
     return out

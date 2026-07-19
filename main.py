@@ -49,6 +49,25 @@ RUNTIME = {
 }
 
 
+def external_scheme(request):
+    """
+    Schéma (http/https) tel que vu par le client externe.
+
+    Derrière un reverse proxy ou Cloudflare, la connexion à l'app peut être
+    en clair même quand le client parle en HTTPS : request.scheme refléterait
+    alors "http" et toutes les URLs générées (logo, resolve...) casseraient
+    le HTTPS attendu par Stremio (mixed content -> manifest bloqué en chargement).
+    On fait confiance à X-Forwarded-Proto (standard, posé par Cloudflare/Caddy/nginx).
+    """
+    forwarded = request.headers.get("X-Forwarded-Proto", "")
+    scheme = forwarded.split(",")[0].strip().lower()
+    return scheme if scheme in ("http", "https") else request.scheme
+
+
+def external_host_url(request):
+    return f"{external_scheme(request)}://{request.host}"
+
+
 # ============================================================================
 # Middleware
 # ============================================================================
@@ -121,7 +140,7 @@ LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" v
 
 
 def _logo_url(request):
-    return f"{request.scheme}://{request.host}/logo.svg"
+    return f"{external_host_url(request)}/logo.svg"
 
 
 def _manifest(configured, request):
@@ -161,7 +180,7 @@ async def handle_manifest(request):
 
 
 async def handle_stream_no_config(request):
-    host_url = f"{request.scheme}://{request.host}"
+    host_url = external_host_url(request)
     return web.json_response({"streams": [{
         "name": "Ranger",
         "title": "⚙️ Configure Ranger",
@@ -198,7 +217,7 @@ async def handle_stream(request):
     logging.info(f"Stream {stream_type} {imdb_id} S{season}E{episode}")
 
     config_str = request.match_info.get("config", "")
-    host_url = f"{request.scheme}://{request.host}"
+    host_url = external_host_url(request)
     filters = config.get("filters") or {}
 
     # 1. Métadonnées (TMDB ou Cinemeta)

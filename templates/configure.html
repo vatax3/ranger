@@ -70,6 +70,7 @@
   .url-box {
     background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
     font-size: .78rem; word-break: break-all; color: var(--muted); margin-top: 8px; display: none;
+    max-height: 4.6em; overflow-y: auto;
   }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
@@ -242,6 +243,7 @@
 
   <div class="actions">
     <div class="url-box" id="urlBox"></div>
+    <p class="small muted" id="installHint" style="margin:0 0 4px;text-align:center"></p>
     <div class="row">
       <button class="btn ghost" onclick="copyUrl()">📋 Copier l'URL du manifest</button>
     </div>
@@ -281,6 +283,7 @@ const SOURCE_LABELS = {
 
 // Config pré-remplie (injectée par le serveur depuis l'URL du manifest)
 const PREFILL = null;
+const IS_EDITING = PREFILL !== null;
 
 let debrids = [];      // [{service, key}]
 let unit3ds = [];      // [{url, key}]
@@ -509,14 +512,35 @@ function update() {
   btn.classList.toggle("disabled", !valid);
   btn.href = valid ? `stremio://${host}/${encoded}/manifest.json` : "#";
   window._manifestUrl = manifestUrl;
+
+  // En mode édition (config existante rouverte), le bouton réinstalle
+  // l'addon avec la nouvelle config : Stremio remplace l'installation
+  // existante (même ID d'addon) plutôt que d'en créer une seconde.
+  if (IS_EDITING) {
+    btn.textContent = "🔄 Appliquer les modifications";
+    document.getElementById("installHint").textContent =
+      "Remplace votre installation Ranger actuelle par cette configuration mise à jour.";
+  } else {
+    btn.textContent = "➕ Installer dans Stremio";
+  }
 }
 
 function copyUrl() {
-  const box = document.getElementById("urlBox");
-  box.style.display = "block";
+  const b = event.target;
+  const t = b.textContent;
   navigator.clipboard.writeText(window._manifestUrl || "").then(() => {
-    const b = event.target; const t = b.textContent; b.textContent = "✅ Copié !";
+    // La confirmation sur le bouton suffit ; pas besoin d'afficher l'URL
+    // complète (elle peut faire >1800 caractères avec une config étoffée).
+    b.textContent = "✅ Copié !";
     setTimeout(() => b.textContent = t, 1500);
+  }).catch(() => {
+    // Fallback si le presse-papier est inaccessible (permissions navigateur) :
+    // on affiche l'URL dans une boîte à défilement pour copie manuelle.
+    const box = document.getElementById("urlBox");
+    box.style.display = "block";
+    box.textContent = window._manifestUrl || "";
+    b.textContent = "⚠️ Copie manuelle ci-dessous";
+    setTimeout(() => b.textContent = t, 2500);
   });
 }
 

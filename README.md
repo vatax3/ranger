@@ -101,6 +101,7 @@ Accessible sur `/admin` dès que `RANGER_ADMIN_TOKEN` est défini (sinon le pane
 | `PORT` | `7000` | Port d'écoute |
 | `RANGER_DB` | `/data/ranger.db` | Chemin de la base SQLite |
 | `RANGER_ADMIN_TOKEN` | — | Token du panel admin `/admin`. Non défini → panel désactivé. |
+| `RANGER_PUBLIC_URL` | — | URL publique fixe (ex: `https://ranger.mondomaine.fr`), prioritaire sur `X-Forwarded-Proto`/`Host`. Recommandé si le port du conteneur est aussi joignable directement (headers usurpables sinon). |
 | `RANGER_TTL_CACHED` | `21600` (6 h) | TTL cache « en cache » |
 | `RANGER_TTL_UNCACHED` | `1200` (20 min) | TTL cache « non caché » |
 | `RANGER_TTL_SEARCH` | `1800` (30 min) | TTL résultats de recherche |

@@ -14,9 +14,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Code
 COPY . .
 
-# Volume pour la base de cache SQLite
-RUN mkdir -p /data
+# Utilisateur non-root (UID/GID 1000, fixes pour pouvoir chown un volume hôte
+# existant : `chown -R 1000:1000 <dossier_data_hote>` si vous migrez depuis
+# une version qui tournait en root).
+RUN groupadd -r -g 1000 ranger \
+    && useradd -r -u 1000 -g ranger -d /app -s /usr/sbin/nologin ranger \
+    && mkdir -p /data \
+    && chown -R ranger:ranger /app /data
+
 VOLUME ["/data"]
+USER ranger
 
 EXPOSE 7000
 

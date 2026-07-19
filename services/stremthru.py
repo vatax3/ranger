@@ -5,6 +5,8 @@ import binascii
 import json
 import logging
 
+from utils import check_absolute_episode
+
 # Stores supportés par StremThru et mapping vers les clés de config Frenchio
 STREMTHRU_STORES = {
     "alldebrid": "alldebrid_key",
@@ -140,7 +142,7 @@ class StremThruService:
         logging.info(f"StremThru [{self.store_name}]: {cached_count}/{len(cleaned_hashes)} cached")
         return availability
 
-    async def unlock_magnet(self, magnet_hash, season=None, episode=None, media_type=None):
+    async def unlock_magnet(self, magnet_hash, season=None, episode=None, media_type=None, absolute_episode=None):
         """
         Ajoute le magnet au store via StremThru puis génère le lien direct.
         POST /v0/store/magnets -> sélection du fichier -> POST /v0/store/link/generate
@@ -190,7 +192,7 @@ class StremThruService:
                 return None
 
             logging.info(f"🔗 StremThru [{self.store_name}]: {len(files)} files in torrent")
-            target_link = self._select_link(files, season, episode, media_type)
+            target_link = self._select_link(files, season, episode, media_type, absolute_episode)
             if not target_link:
                 logging.error(f"❌ StremThru [{self.store_name}]: No suitable file selected")
                 return None
@@ -219,7 +221,7 @@ class StremThruService:
                 logging.error(f"❌ StremThru [{self.store_name}] link generation exception: {e}")
                 return None
 
-    def _select_link(self, links, season, episode, media_type):
+    def _select_link(self, links, season, episode, media_type, absolute_episode=None):
         """Sélectionne le bon fichier dans le torrent (même logique qu'AllDebrid)."""
         if not links:
             return None
@@ -246,6 +248,15 @@ class StremThruService:
                         return link['link']
 
             logging.warning(f"No strict match found for S{season}E{episode}. Files available: {[l.get('filename') for l in links[:5]]}...")
+
+        # Numérotation absolue (fansub anime) : les packs multi-épisodes anime
+        # ne matchent pas SxxExx, la sélection tomberait sinon sur le plus
+        # gros fichier (mauvais épisode).
+        if absolute_episode is not None:
+            for link in links:
+                if check_absolute_episode(link.get('filename', ''), absolute_episode, exclude_packs=True):
+                    logging.info(f"Match absolu trouvé: {link.get('filename')} (épisode {absolute_episode})")
+                    return link['link']
 
         # Filtrage par extension (Vidéos uniquement)
         video_extensions = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.m2ts', '.vob')

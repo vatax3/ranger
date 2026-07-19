@@ -7,6 +7,8 @@ import traceback
 import binascii
 import asyncio
 
+from utils import check_absolute_episode
+
 class AllDebridService:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -226,7 +228,7 @@ class AllDebridService:
 
         return all_availability
 
-    async def unlock_magnet(self, magnet_hash, season=None, episode=None, media_type=None):
+    async def unlock_magnet(self, magnet_hash, season=None, episode=None, media_type=None, absolute_episode=None):
         """
         Upload magnet -> Get link -> Unlock
         """
@@ -269,7 +271,7 @@ class AllDebridService:
                     # Si ready, on a les liens
                     if is_ready and has_links:
                         logging.info(f"⚡ AD Instant ready with {len(magnet_info['links'])} links")
-                        target_link = self._select_link(magnet_info['links'], season, episode, media_type)
+                        target_link = self._select_link(magnet_info['links'], season, episode, media_type, absolute_episode)
                         if target_link:
                             logging.info(f"🔓 AD Unlocking instant link...")
                             unlocked = await self._unlock_link(session, target_link)
@@ -339,7 +341,7 @@ class AllDebridService:
                         return None
                     
                     logging.info(f"🔗 AD Extracted {len(links)} files from recursive structure")
-                    target_link = self._select_link(links, season, episode, media_type)
+                    target_link = self._select_link(links, season, episode, media_type, absolute_episode)
                     if not target_link:
                         logging.error(f"❌ AD No suitable file selected")
                         return None
@@ -358,35 +360,44 @@ class AllDebridService:
                 
         return None
 
-    def _select_link(self, links, season, episode, media_type):
+    def _select_link(self, links, season, episode, media_type, absolute_episode=None):
         """Sélectionne le bon fichier dans le torrent"""
         if not links:
             logging.error(f"❌ AD _select_link: No links provided")
             return None
-            
+
         logging.info(f"🎯 AD Selecting file for S{season}E{episode} (type={media_type}) among {len(links)} files")
-        
+
         # Si épisode spécifique
         if season is not None and episode is not None:
             # Patterns pour S01E01, 1x01, etc.
             s_str = f"{int(season):02d}"
             e_str = f"{int(episode):02d}"
-            
+
             patterns = [
                 f"S{s_str}E{e_str}", # S01E01
                 f"{int(season)}x{e_str}", # 1x01
                 f"S{int(season)}E{e_str}", # S1E01
                 f"S{s_str}.E{e_str}" # S01.E01
             ]
-            
+
             for link in links:
                 filename = link.get('filename', '').upper()
                 for pat in patterns:
                     if pat.upper() in filename:
                         logging.info(f"Match found: {filename} (Pattern: {pat})")
                         return link['link']
-            
+
             logging.warning(f"No strict match found for S{season}E{episode}. Files available: {[l.get('filename') for l in links[:5]]}...")
+
+        # Numérotation absolue (fansub anime, ex: "One Piece - 1122") : les
+        # packs multi-épisodes anime ne matchent pas SxxExx, la sélection
+        # tomberait sinon sur le plus gros fichier (mauvais épisode).
+        if absolute_episode is not None:
+            for link in links:
+                if check_absolute_episode(link.get('filename', ''), absolute_episode, exclude_packs=True):
+                    logging.info(f"Match absolu trouvé: {link.get('filename')} (épisode {absolute_episode})")
+                    return link['link']
 
         # Filtrage par extension (Vidéos uniquement)
         video_extensions = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.m2ts', '.vob')

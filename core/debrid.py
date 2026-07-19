@@ -92,15 +92,17 @@ class DebridBackend:
             logging.error(f"{self.name}: check_availability a échoué: {e}")
             return {}
 
-    async def resolve(self, info_hash, season=None, episode=None, media_type=None):
+    async def resolve(self, info_hash, season=None, episode=None, media_type=None, absolute_episode=None):
         """Génère l'URL de lecture directe (ajoute au débrideur si non caché)."""
         try:
             if self.name == "torbox" and not self.uses_stremthru:
                 magnet = f"magnet:?xt=urn:btih:{info_hash}"
                 stream_type = "series" if (season and episode) else "movie"
-                url = await self._impl.get_stream_link(magnet, stream_type, season=season, episode=episode)
+                url = await self._impl.get_stream_link(
+                    magnet, stream_type, season=season, episode=episode, absolute_episode=absolute_episode)
             else:
-                url = await self._impl.unlock_magnet(info_hash, season=season, episode=episode, media_type=media_type)
+                url = await self._impl.unlock_magnet(
+                    info_hash, season=season, episode=episode, media_type=media_type, absolute_episode=absolute_episode)
             if url:
                 cache.mark_cached(self.name, self.clean_hash(info_hash))
             return url

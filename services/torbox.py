@@ -7,6 +7,8 @@ import asyncio
 import logging
 import re
 
+from utils import check_absolute_episode
+
 class TorBoxService:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -262,7 +264,7 @@ class TorBoxService:
                         continue
                     return None
     
-    async def get_stream_link(self, magnet_link, stream_type, season=None, episode=None):
+    async def get_stream_link(self, magnet_link, stream_type, season=None, episode=None, absolute_episode=None):
         """
         Obtient un lien de streaming depuis un magnet.
         
@@ -342,10 +344,21 @@ class TorBoxService:
                 if is_video and matches_ep:
                     matching_files.append(f)
             
+            # Numérotation absolue (fansub anime) : les packs multi-épisodes
+            # anime ne matchent pas SxxExx.
+            if not matching_files and absolute_episode is not None:
+                for f in files:
+                    if self._is_video_file(f.get("name", "")) and check_absolute_episode(
+                        f.get("name", ""), absolute_episode, exclude_packs=True
+                    ):
+                        matching_files.append(f)
+                if matching_files:
+                    logging.info(f"TorBox: Match absolu trouvé (épisode {absolute_episode})")
+
             if not matching_files:
                 logging.error(f"TorBox: No video file matching S{season:02d}E{episode:02d}")
                 return None
-            
+
             logging.info(f"TorBox: Found {len(matching_files)} matching video file(s)")
             
             # Prendre le plus gros si plusieurs matchent

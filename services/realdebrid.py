@@ -1,222 +1,212 @@
-import aiohttp
-import logging
+"""
+Client Real-Debrid natif — API officielle uniquement (api.real-debrid.com).
+
+Historique : l'implémentation précédente routait tous les appels vers un
+serveur StremThru public tiers (stremthru.13377001.xyz) codé en dur, y
+compris quand l'utilisateur n'avait configuré aucune instance StremThru.
+Cela envoyait la clé API Real-Debrid de l'utilisateur à un tiers non
+contrôlé, à son insu. Ce module ne contacte plus que l'API officielle ;
+pour router via une instance StremThru (recommandé, contourne le
+rate-limit RD post-2023 sur la vérification de cache), configurez-la
+explicitement dans Ranger — voir services/stremthru.py.
+"""
+
 import asyncio
+import logging
+
+import aiohttp
+
+from utils import check_absolute_episode
+
+API_BASE = "https://api.real-debrid.com/rest/1.0"
+
+VIDEO_EXTENSIONS = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.m2ts', '.vob')
+BAD_EXTENSIONS = ('.iso', '.pdf', '.epub', '.txt', '.nfo', '.jpg', '.jpeg', '.png', '.rar', '.zip')
 
 
 class RealDebridService:
-    """
-    Service Real-Debrid via StremThru proxy.
-    StremThru gère le rate-limiting et fournit une API unifiée
-    avec un endpoint check_magnets en batch (pas de rate-limit).
-    """
-
-    STREMTHRU_URL = "https://stremthru.13377001.xyz"
-
     def __init__(self, api_key):
         self.api_key = api_key
-        self.base_url = self.STREMTHRU_URL
-        self.headers = {
-            "X-StremThru-Store-Name": "realdebrid",
-            "X-StremThru-Store-Authorization": f"Bearer {api_key}",
-        }
+        self.headers = {"Authorization": f"Bearer {api_key}"}
 
     async def check_availability(self, hashes):
         """
-        Vérifie la disponibilité via GET /v0/store/magnets/check.
-        StremThru supporte le batch check en un seul appel — pas de rate-limit.
-        
-        Retourne un dict {hash: bool}.
+        Vérifie la disponibilité en cache via l'endpoint officiel
+        instantAvailability. Real-Debrid a fortement restreint cet endpoint
+        depuis 2023 (anti-abus) : il peut renvoyer peu ou pas de résultats
+        selon le compte. C'est une limitation connue de l'API officielle,
+        pas un bug — utilisez StremThru pour un check fiable.
         """
         if not hashes:
             return {}
 
-        all_availability = {}
+        cleaned = [h.strip().lower() for h in hashes if h]
+        availability = {}
         batch_size = 50
 
-        logging.info(f"RD (StremThru): Checking availability for {len(hashes)} hashes")
-
         async with aiohttp.ClientSession(trust_env=True) as session:
-            for i in range(0, len(hashes), batch_size):
-                batch = hashes[i:i + batch_size]
-
-                params = [("magnet", f"magnet:?xt=urn:btih:{h}") for h in batch]
-
+            for i in range(0, len(cleaned), batch_size):
+                batch = cleaned[i:i + batch_size]
+                url = f"{API_BASE}/torrents/instantAvailability/{'/'.join(batch)}"
                 try:
-                    url = f"{self.base_url}/v0/store/magnets/check"
-                    async with session.get(url, headers=self.headers, params=params) as resp:
-                        if resp.status == 200:
-                            result = await resp.json()
-                            items = result.get("data", {}).get("items", [])
-
-                            for item in items:
-                                h = item.get("hash", "").lower()
-                                status = item.get("status", "")
-                                is_cached = status == "cached"
-                                all_availability[h] = is_cached
-                        else:
-                            text = await resp.text()
-                            logging.warning(f"RD (StremThru) check failed: HTTP {resp.status} - {text[:300]}")
+                    async with session.get(url, headers=self.headers,
+                                           timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                        if resp.status != 200:
+                            logging.warning(f"RD instantAvailability HTTP {resp.status}")
                             for h in batch:
-                                all_availability[h.lower()] = False
+                                availability[h] = False
+                            continue
+                        data = await resp.json(content_type=None)
+                        for h in batch:
+                            entry = data.get(h) or data.get(h.upper())
+                            # Format : {hash: {"rd": [{fileid: {...}}, ...]}} si caché, [] sinon
+                            has_cache = bool(entry and entry.get("rd"))
+                            availability[h] = has_cache
                 except Exception as e:
-                    logging.error(f"RD (StremThru) check exception: {e}")
+                    logging.error(f"RD instantAvailability exception: {e}")
                     for h in batch:
-                        all_availability[h.lower()] = False
+                        availability[h] = False
 
-                if i + batch_size < len(hashes):
-                    await asyncio.sleep(0.2)
+        cached_count = sum(1 for v in availability.values() if v)
+        logging.info(f"RD (natif): {cached_count}/{len(cleaned)} cached")
+        return availability
 
-        instant_count = sum(1 for v in all_availability.values() if v)
-        logging.info(f"RD (StremThru): {instant_count}/{len(hashes)} cached")
-        return all_availability
-
-    async def unlock_magnet(self, magnet_hash, season=None, episode=None, media_type=None):
+    async def unlock_magnet(self, magnet_hash, season=None, episode=None, media_type=None, absolute_episode=None):
         """
-        Déverrouille un magnet via StremThru :
-        1. POST /v0/store/magnets (add magnet)
-        2. GET /v0/store/magnets/{id} (get files)
-        3. POST /v0/store/link/generate (generate download link)
+        Ajoute le magnet -> sélectionne les fichiers -> attend -> unrestrict.
+        Toutes les requêtes vont exclusivement à api.real-debrid.com.
         """
         magnet_hash = magnet_hash.strip().lower()
-        logging.info(f"🔓 RD (StremThru) unlock: hash={magnet_hash[:16]}..., S{season}E{episode}, type={media_type}")
+        magnet_uri = f"magnet:?xt=urn:btih:{magnet_hash}"
+        logging.info(f"🔓 RD (natif) unlock: hash={magnet_hash[:16]}..., S{season}E{episode}")
 
         async with aiohttp.ClientSession(trust_env=True) as session:
             # 1. Ajouter le magnet
-            magnet_link = f"magnet:?xt=urn:btih:{magnet_hash}"
-            add_url = f"{self.base_url}/v0/store/magnets"
-
             try:
-                async with session.post(add_url, headers=self.headers, json={"magnet": magnet_link}) as resp:
+                async with session.post(
+                    f"{API_BASE}/torrents/addMagnet", headers=self.headers,
+                    data={"magnet": magnet_uri}, timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
                     if resp.status not in (200, 201):
-                        text = await resp.text()
-                        logging.error(f"❌ RD (StremThru) add magnet failed: HTTP {resp.status} - {text[:300]}")
+                        logging.error(f"❌ RD addMagnet failed: HTTP {resp.status}")
                         return None
-
-                    result = await resp.json()
-                    magnet_data = result.get("data", {})
-                    magnet_id = magnet_data.get("id")
-                    status = magnet_data.get("status", "")
-                    files = magnet_data.get("files", [])
-
-                    logging.info(f"✅ RD (StremThru) magnet added: id={magnet_id}, status={status}, files={len(files)}")
+                    torrent_id = (await resp.json()).get("id")
             except Exception as e:
-                logging.error(f"❌ RD (StremThru) add magnet exception: {e}")
+                logging.error(f"❌ RD addMagnet exception: {e}")
                 return None
 
-            # 2. Si pas encore de fichiers ou status non final, attendre
-            if not files or status not in ("downloaded", "cached"):
-                max_wait = 15
-                poll_interval = 1.5
-                elapsed = 0
-
-                while elapsed < max_wait:
-                    try:
-                        info_url = f"{self.base_url}/v0/store/magnets/{magnet_id}"
-                        async with session.get(info_url, headers=self.headers) as resp:
-                            if resp.status == 200:
-                                result = await resp.json()
-                                magnet_data = result.get("data", {})
-                                status = magnet_data.get("status", "")
-                                files = magnet_data.get("files", [])
-
-                                if status in ("downloaded", "cached") and files:
-                                    logging.info(f"✅ RD (StremThru) ready: {len(files)} files")
-                                    break
-                                elif status in ("failed", "invalid"):
-                                    logging.error(f"❌ RD (StremThru) magnet failed: status={status}")
-                                    return None
-
-                                logging.info(f"⏳ RD (StremThru) waiting: status={status}")
-                            else:
-                                logging.warning(f"RD (StremThru) info failed: HTTP {resp.status}")
-                    except Exception as e:
-                        logging.error(f"RD (StremThru) info exception: {e}")
-
-                    await asyncio.sleep(poll_interval)
-                    elapsed += poll_interval
-
-                if not files:
-                    logging.error(f"❌ RD (StremThru) no files after {max_wait}s")
-                    return None
-
-            # 3. Sélectionner le bon fichier
-            target_file = self._select_best_file(files, season, episode, media_type)
-            if not target_file:
-                logging.error("❌ RD (StremThru) no suitable file found")
+            if not torrent_id:
                 return None
 
-            file_link = target_file.get("link")
-            if not file_link:
-                logging.error("❌ RD (StremThru) file has no link")
+            # 2. Récupérer les infos (liste des fichiers)
+            info = await self._get_info(session, torrent_id)
+            if not info:
                 return None
 
-            logging.info(f"🎯 RD (StremThru) selected: {target_file.get('name')} ({target_file.get('size', 0)} bytes)")
+            files = info.get("files", [])
+            target_ids = self._select_file_ids(files, season, episode, absolute_episode)
+            if not target_ids:
+                logging.error("❌ RD: aucun fichier vidéo pertinent trouvé")
+                return None
 
-            # 4. Générer le lien de téléchargement
+            # 3. Sélectionner les fichiers puis attendre le statut "downloaded"
             try:
-                gen_url = f"{self.base_url}/v0/store/link/generate"
-                async with session.post(gen_url, headers=self.headers, json={"link": file_link}) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        download_link = result.get("data", {}).get("link")
-                        if download_link:
-                            logging.info(f"✅ RD (StremThru) link generated successfully")
-                            return download_link
-                        else:
-                            logging.error("❌ RD (StremThru) no link in generate response")
-                    else:
-                        text = await resp.text()
-                        logging.error(f"❌ RD (StremThru) generate link failed: HTTP {resp.status} - {text[:300]}")
+                async with session.post(
+                    f"{API_BASE}/torrents/selectFiles/{torrent_id}", headers=self.headers,
+                    data={"files": ",".join(str(i) for i in target_ids)},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    if resp.status not in (200, 204):
+                        logging.error(f"❌ RD selectFiles failed: HTTP {resp.status}")
+                        return None
             except Exception as e:
-                logging.error(f"❌ RD (StremThru) generate link exception: {e}")
+                logging.error(f"❌ RD selectFiles exception: {e}")
+                return None
 
+            info = await self._wait_ready(session, torrent_id)
+            if not info:
+                return None
+
+            links = info.get("links") or []
+            if not links:
+                logging.error("❌ RD: torrent prêt mais aucun lien")
+                return None
+
+            # 4. Unrestrict du lien correspondant au fichier choisi (le premier
+            # sélectionné, RD ordonne links selon l'ordre des fichiers choisis)
+            try:
+                async with session.post(
+                    f"{API_BASE}/unrestrict/link", headers=self.headers,
+                    data={"link": links[0]}, timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    if resp.status != 200:
+                        logging.error(f"❌ RD unrestrict failed: HTTP {resp.status}")
+                        return None
+                    download = (await resp.json()).get("download")
+                    if download:
+                        logging.info("✅ RD (natif) lien généré")
+                    return download
+            except Exception as e:
+                logging.error(f"❌ RD unrestrict exception: {e}")
+                return None
+
+    async def _get_info(self, session, torrent_id):
+        try:
+            async with session.get(
+                f"{API_BASE}/torrents/info/{torrent_id}", headers=self.headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                return await resp.json()
+        except Exception as e:
+            logging.error(f"RD get_info exception: {e}")
             return None
 
-    def _select_best_file(self, files, season=None, episode=None, media_type=None):
-        """
-        Sélectionne le meilleur fichier parmi la liste StremThru.
-        Format: [{index, link, name, path, size}, ...]
-        """
-        if not files:
-            return None
+    async def _wait_ready(self, session, torrent_id, max_wait=30, interval=2):
+        elapsed = 0
+        while elapsed < max_wait:
+            info = await self._get_info(session, torrent_id)
+            if not info:
+                return None
+            status = info.get("status")
+            if status == "downloaded":
+                return info
+            if status in ("error", "magnet_error", "virus", "dead"):
+                logging.error(f"❌ RD: statut torrent invalide ({status})")
+                return None
+            await asyncio.sleep(interval)
+            elapsed += interval
+        logging.error("❌ RD: timeout en attente du téléchargement")
+        return None
 
-        video_extensions = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.m2ts', '.vob')
-        bad_extensions = ('.iso', '.pdf', '.epub', '.txt', '.nfo', '.jpg', '.jpeg', '.png', '.rar', '.zip')
-
+    def _select_file_ids(self, files, season, episode, absolute_episode=None):
+        """Retourne les IDs de fichiers vidéo pertinents (épisode ciblé sinon tous)."""
         video_files = [f for f in files if any(
-            f.get('name', '').lower().endswith(ext) for ext in video_extensions
+            (f.get("path") or "").lower().endswith(ext) for ext in VIDEO_EXTENSIONS
         )]
-
         if not video_files:
-            # Fallback : exclure les extensions interdites si aucune vidéo n'est trouvée
             video_files = [f for f in files if not any(
-                f.get('name', '').lower().endswith(ext) for ext in bad_extensions
+                (f.get("path") or "").lower().endswith(ext) for ext in BAD_EXTENSIONS
             )]
-        
         if not video_files:
-            logging.error("RD (StremThru): No video files found in torrent")
-            return None
+            return []
 
         if season is not None and episode is not None:
-            s_str = f"{int(season):02d}"
-            e_str = f"{int(episode):02d}"
-
-            patterns = [
-                f"S{s_str}E{e_str}",
-                f"{int(season)}x{e_str}",
-                f"S{int(season)}E{e_str}",
-                f"S{s_str}.E{e_str}"
-            ]
-
+            s_str, e_str = f"{int(season):02d}", f"{int(episode):02d}"
+            patterns = [f"S{s_str}E{e_str}", f"{int(season)}x{e_str}", f"S{s_str}.E{e_str}"]
             for f in video_files:
-                name = (f.get('name', '') or f.get('path', '')).upper()
-                for pat in patterns:
-                    if pat.upper() in name:
-                        logging.info(f"RD (StremThru): Episode match: {f.get('name')} (pattern: {pat})")
-                        return f
+                name = (f.get("path") or "").upper()
+                if any(pat in name for pat in patterns):
+                    return [f["id"]]
 
-            logging.warning(f"RD (StremThru): No episode match for S{season}E{episode}")
+        # Numérotation absolue (fansub anime) : les packs multi-épisodes anime
+        # ne matchent pas SxxExx, la sélection tomberait sinon sur le plus
+        # gros fichier (mauvais épisode).
+        if absolute_episode is not None:
+            for f in video_files:
+                if check_absolute_episode(f.get("path") or "", absolute_episode, exclude_packs=True):
+                    return [f["id"]]
 
-        best = max(video_files, key=lambda x: x.get('size', 0))
-        logging.info(f"RD (StremThru): Selected largest: {best.get('name')} ({best.get('size', 0)} bytes)")
-        return best
+        best = max(video_files, key=lambda f: f.get("bytes", 0))
+        return [best["id"]]

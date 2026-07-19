@@ -4,6 +4,8 @@ import logging
 import json
 from urllib.parse import urlencode
 
+from core.netsafety import is_url_safe
+
 class Unit3DService:
     def __init__(self, trackers_config):
         """
@@ -13,32 +15,37 @@ class Unit3DService:
 
     async def search_tracker(self, session, tracker, query_params):
         url = f"{tracker['url']}/api/torrents/filter"
+
+        # SSRF : l'URL du tracker vient de la config utilisateur, or Ranger
+        # est exposé publiquement. Voir core/netsafety.py.
+        if not await is_url_safe(url):
+            logging.warning(f"UNIT3D: URL bloquée (cible interne) : {tracker['url']}")
+            return []
+
         params = {
             "api_token": tracker['token'],
             **query_params
         }
-        
+
         # On ignore les catégories comme demandé
         if 'categories' in params:
             del params['categories']
-            
+
         # Construction de la query string standard
         query_string = urlencode(params)
         full_url = f"{url}?{query_string}"
-        
+
         # Masquage du token pour les logs
         log_url = full_url.replace(tracker['token'], '***TOKEN***')
         logging.info(f"[{tracker['url']}] Requesting: {log_url}")
 
         try:
-            async with session.get(full_url, timeout=15) as response:
+            async with session.get(full_url, timeout=15, allow_redirects=False) as response:
                 logging.info(f"[{tracker['url']}] Status: {response.status}")
-                
+
                 if response.status == 200:
                     text_data = await response.text()
-                    # Log plus court pour ne pas spammer si grosse réponse, mais suffisant pour voir le format
-                    logging.info(f"[{tracker['url']}] Raw Response Start: {text_data[:200]} ...")
-                    
+
                     try:
                         data = json.loads(text_data)
                     except json.JSONDecodeError as e:
@@ -89,18 +96,6 @@ class Unit3DService:
             pass
             
         return []
-
-    async def download_torrent(self, session, download_url):
-        """Télécharge le fichier .torrent depuis l'URL fournie"""
-        # download_url contient souvent déjà l'api_token
-        try:
-            async with session.get(download_url) as resp:
-                if resp.status == 200:
-                    return await resp.read()
-                logging.error(f"UNIT3D Download Error: {resp.status}")
-        except Exception as e:
-            logging.error(f"UNIT3D Download Exception: {e}")
-        return None
 
     async def search_all(self, tmdb_id=None, imdb_id=None, type=None, season=None, episode=None):
         tasks = []

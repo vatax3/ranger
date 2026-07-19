@@ -12,12 +12,29 @@ Accès synchrone (opérations courtes, WAL activé) — suffisant pour un addon
 mono-processus.
 """
 
+import hashlib
 import json
 import logging
 import os
 import sqlite3
 import threading
 import time
+
+
+def fingerprint(*secrets):
+    """
+    Empreinte courte et non réversible d'identifiants (clé API, login...),
+    utilisée pour namespacer les clés de cache par compte. Sans ça, deux
+    utilisateurs distincts d'une même instance Ranger (plusieurs profils
+    d'une même famille, par ex.) avec des credentials différents pourraient
+    se voir servir les résultats/liens de l'un ou l'autre pendant la fenêtre
+    de cache. Retourne "" si aucun secret fourni (cache partagé, volontaire
+    pour les trackers publics sans credential).
+    """
+    raw = "|".join(str(s) for s in secrets if s)
+    if not raw:
+        return ""
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 DB_PATH = os.getenv("RANGER_DB", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "ranger.db"))
 
@@ -268,13 +285,21 @@ def stats():
 
 
 def _parse_search_key(key):
-    # search:{source}:{type}:{imdb}[:season:episode]
+    # search:{source}:{type}:{imdb}[:season:episode]                 (trackers publics, cache partagé)
+    # search:{source}:{fingerprint}:{type}:{imdb}[:season:episode]   (trackers à clé, cache namespacé par compte)
     parts = key.split(":")
     if len(parts) < 4 or parts[0] != "search":
         return {"key": key}
-    info = {"key": key, "source": parts[1], "type": parts[2], "imdb": parts[3]}
-    if len(parts) >= 6:
-        info["season"], info["episode"] = parts[4], parts[5]
+    source = parts[1]
+    if parts[2] in ("movie", "series"):
+        offset, scoped = 2, False
+    else:
+        offset, scoped = 3, True
+    if len(parts) < offset + 2:
+        return {"key": key, "source": source}
+    info = {"key": key, "source": source, "type": parts[offset], "imdb": parts[offset + 1], "scoped": scoped}
+    if len(parts) >= offset + 4:
+        info["season"], info["episode"] = parts[offset + 2], parts[offset + 3]
     return info
 
 

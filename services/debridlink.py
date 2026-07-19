@@ -3,6 +3,8 @@ import logging
 import asyncio
 import re
 
+from utils import check_absolute_episode
+
 class DebridLinkService:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -140,7 +142,7 @@ class DebridLinkService:
         except Exception as e:
             logging.error(f"DebridLink: Error removing {torrent_id}: {e}")
     
-    async def unlock_magnet(self, info_hash, season=None, episode=None, media_type=None):
+    async def unlock_magnet(self, info_hash, season=None, episode=None, media_type=None, absolute_episode=None):
         """
         Déverrouille un magnet et retourne l'URL de streaming
         """
@@ -193,7 +195,15 @@ class DebridLinkService:
                             if any(re.search(p, filename, re.IGNORECASE) for p in patterns):
                                 selected_file = f
                                 break
-                        
+
+                        # Numérotation absolue (fansub anime) : les packs
+                        # multi-épisodes anime ne matchent pas SxxExx.
+                        if not selected_file and absolute_episode is not None:
+                            for f in files:
+                                if check_absolute_episode(f.get('name', ''), absolute_episode, exclude_packs=True):
+                                    selected_file = f
+                                    break
+
                     else:
                         # Film : prendre le plus gros fichier vidéo
                         video_extensions = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.m2ts')

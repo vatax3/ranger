@@ -76,14 +76,16 @@ async def _from_tmdb(imdb_id, stream_type, tmdb_key):
     date = details.get("release_date") or details.get("first_air_date") or ""
     year = date.split("-")[0] if date else ""
 
-    # Détection anime (logique héritée de Frenchio)
+    # Détection anime : origine JP/KR/CN ET genre Animation (16) requis.
+    # Un simple "or orig_lang == 'ja'" classerait n'importe quel drama
+    # live-action japonais comme anime — le genre Animation est nécessaire
+    # dans tous les cas.
     orig_lang = details.get("original_language", "")
     origin_country = details.get("origin_country", [])
     genre_ids = [g.get("id") for g in details.get("genres", [])]
     is_anime = False
-    if orig_lang in ("ja", "ko", "zh") or "JP" in origin_country:
-        if 16 in genre_ids or orig_lang == "ja":
-            is_anime = True
+    if (orig_lang in ("ja", "ko", "zh") or "JP" in origin_country) and 16 in genre_ids:
+        is_anime = True
     if "anime" in (details.get("overview") or "").lower() and 16 in genre_ids:
         is_anime = True
 

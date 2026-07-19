@@ -13,8 +13,11 @@ v1 : films / séries / anime, contenu français comme étranger.
 """
 
 import asyncio
+import hmac
+import json
 import logging
 import os
+import re
 import time
 
 import aiofiles
@@ -49,6 +52,30 @@ RUNTIME = {
 }
 
 
+_JSON_SCRIPT_ESCAPES = {ord(">"): "\\u003E", ord("<"): "\\u003C", ord("&"): "\\u0026"}
+
+
+def json_for_script(obj):
+    """
+    Sérialise en JSON pour injection dans un <script> inline, sans risque
+    d'évasion : un champ de config contenant "</script>" (ou "<script>",
+    "<!--"...) casserait le parsing HTML et permettrait une XSS réfléchie.
+    Les caractères dangereux sont échappés en séquences unicode, inertes
+    en HTML mais interprétées normalement par JSON.parse / le littéral JS.
+    """
+    return json.dumps(obj, ensure_ascii=False).translate(_JSON_SCRIPT_ESCAPES)
+
+
+# URL publique fixe (optionnelle). Si définie, elle prime sur tout header —
+# c'est la option la plus sûre : X-Forwarded-Proto/Host sont des en-têtes
+# client, usurpables par quiconque atteint directement le port du conteneur
+# sans passer par le reverse proxy (le cas si le port est exposé publiquement,
+# ex: Portainer qui mappe le port du conteneur sur l'hôte). Sans cette
+# variable, on retombe sur X-Forwarded-Proto (suffisant si le VPS n'accepte
+# des connexions entrantes que depuis le reverse proxy/Cloudflare).
+PUBLIC_URL = (os.getenv("RANGER_PUBLIC_URL") or "").strip().rstrip("/")
+
+
 def external_scheme(request):
     """
     Schéma (http/https) tel que vu par le client externe.
@@ -57,7 +84,8 @@ def external_scheme(request):
     en clair même quand le client parle en HTTPS : request.scheme refléterait
     alors "http" et toutes les URLs générées (logo, resolve...) casseraient
     le HTTPS attendu par Stremio (mixed content -> manifest bloqué en chargement).
-    On fait confiance à X-Forwarded-Proto (standard, posé par Cloudflare/Caddy/nginx).
+    On fait confiance à X-Forwarded-Proto (standard, posé par Cloudflare/Caddy/nginx)
+    à défaut de RANGER_PUBLIC_URL.
     """
     forwarded = request.headers.get("X-Forwarded-Proto", "")
     scheme = forwarded.split(",")[0].strip().lower()
@@ -65,6 +93,8 @@ def external_scheme(request):
 
 
 def external_host_url(request):
+    if PUBLIC_URL:
+        return PUBLIC_URL
     return f"{external_scheme(request)}://{request.host}"
 
 
@@ -110,13 +140,14 @@ async def handle_configure(request):
 
         # Persistance : si une config est présente dans l'URL, on la ré-injecte
         # pour pré-remplir le formulaire (clés API, trackers, filtres, tri...).
-        import json as _json
+        # json_for_script échappe </script> et consorts (XSS réfléchie sinon,
+        # une valeur de config pouvant casser hors du <script> inline).
         prefill = "null"
         config_str = request.match_info.get("config", "")
         if config_str:
             decoded = decode_config(config_str)
             if decoded:
-                prefill = _json.dumps(decoded)
+                prefill = json_for_script(decoded)
         content = content.replace("const PREFILL = null;", f"const PREFILL = {prefill};")
 
         return web.Response(text=content, content_type="text/html")
@@ -192,6 +223,12 @@ async def handle_stream_no_config(request):
 # Stream
 # ============================================================================
 
+# IMDB ID strict : ce champ finit dans des clés de cache, des logs et le
+# dashboard admin (rendu via innerHTML côté client) — un ID non validé est
+# un vecteur de XSS stockée si on le laisse passer tel quel.
+_IMDB_ID_RE = re.compile(r"^tt\d{5,9}$")
+
+
 def _parse_stream_id(stream_id):
     imdb_id, season, episode = stream_id, None, None
     if ":" in stream_id:
@@ -202,6 +239,8 @@ def _parse_stream_id(stream_id):
                 season, episode = int(parts[1]), int(parts[2])
             except ValueError:
                 pass
+    if not _IMDB_ID_RE.match(imdb_id):
+        return None, None, None
     return imdb_id, season, episode
 
 
@@ -214,6 +253,9 @@ async def handle_stream(request):
     stream_type = request.match_info.get("type")
     stream_id = request.match_info.get("id")
     imdb_id, season, episode = _parse_stream_id(stream_id)
+    if imdb_id is None:
+        logging.warning(f"ID de stream invalide rejeté: {stream_id!r}")
+        return web.json_response({"streams": []})
     logging.info(f"Stream {stream_type} {imdb_id} S{season}E{episode}")
 
     config_str = request.match_info.get("config", "")
@@ -245,25 +287,39 @@ async def handle_stream(request):
     logging.info(f"{len(torrents)} torrents pertinents après filtrage")
 
     # 4. Disponibilité débrideur (parallèle) + cache SQLite
+    # Budget global : un débrideur lent/qui ne répond pas ne doit pas bloquer
+    # toute la réponse /stream (aiohttp n'a pas de timeout par défaut sur ces
+    # appels, qui hériteraient sinon du timeout aiohttp par défaut de 5 min).
     backends = build_backends(config, client_ip=get_client_ip(request))
     hashes = [t["info_hash"] for t in torrents if t.get("info_hash")]
     availability = {}
     if backends and hashes:
-        results = await asyncio.gather(*[b.check_availability(hashes) for b in backends])
-        for backend, avail in zip(backends, results):
-            availability[backend.name] = avail
-            logging.info(f"{backend.name}: {sum(1 for v in avail.values() if v)}/{len(hashes)} en cache")
+        tasks = [asyncio.create_task(b.check_availability(hashes)) for b in backends]
+        done, pending = await asyncio.wait(tasks, timeout=20)
+        for task in pending:
+            task.cancel()
+        for backend, task in zip(backends, tasks):
+            if task in done:
+                try:
+                    avail = task.result()
+                except Exception as e:
+                    logging.error(f"{backend.name}: échec vérification dispo: {e}")
+                    continue
+                availability[backend.name] = avail
+                logging.info(f"{backend.name}: {sum(1 for v in avail.values() if v)}/{len(hashes)} en cache")
+            else:
+                logging.warning(f"{backend.name}: budget de 20s dépassé, backend ignoré pour cette requête")
 
     # 5-7. Construction des streams selon le mode d'affichage
     if config.get("display_mode") == "simple":
         # Mode famille : 1 lien par résolution, meilleur choix automatique
         entries = _build_simple_entries(torrents, backends, availability, config)
-        streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode, simple=True)
+        streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode, absolute_episode, simple=True)
     else:
         entries = _build_entries(torrents, backends, availability, config)
         entries = ranking.sort_entries(entries, config)
         entries = ranking.apply_limits(entries, filters)
-        streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode)
+        streams = _serialize_streams(entries, config_str, host_url, stream_type, season, episode, absolute_episode)
 
     RUNTIME["streams_served"] += len(streams)
     logging.info(f"{len(streams)} streams renvoyés à Stremio")
@@ -347,7 +403,7 @@ def _build_simple_entries(torrents, backends, availability, config):
     return entries
 
 
-def _serialize_streams(entries, config_str, host_url, stream_type, season, episode, simple=False):
+def _serialize_streams(entries, config_str, host_url, stream_type, season, episode, absolute_episode=None, simple=False):
     streams = []
     for entry in entries:
         t = entry["torrent"]
@@ -359,6 +415,12 @@ def _serialize_streams(entries, config_str, host_url, stream_type, season, episo
         resolve_url = f"{host_url}/{config_str}/resolve/{service}/{t['info_hash']}"
         if season is not None and episode is not None:
             resolve_url += f"?season={season}&episode={episode}"
+            # Numérotation absolue (fansub anime) : sans elle, la sélection du
+            # bon fichier dans un pack multi-épisodes peut se tromper (les
+            # heuristiques de sélection cherchent "SxxExx" dans les noms de
+            # fichiers, absent des noms fansub qui utilisent l'absolu).
+            if absolute_episode is not None:
+                resolve_url += f"&absolute={absolute_episode}"
         elif stream_type == "movie":
             resolve_url += "?type=movie"
 
@@ -384,29 +446,35 @@ async def handle_resolve(request):
     info_hash = request.match_info.get("hash")
     season = request.query.get("season")
     episode = request.query.get("episode")
+    absolute_episode = request.query.get("absolute")
     media_type = request.query.get("type")
     client_ip = get_client_ip(request)
-
-    # Cache court des liens résolus : évite de re-débrider à chaque seek
-    # (libmpv rappelle /resolve à chaque Range request). Clé liée à l'IP client
-    # car certains liens débrideur sont générés pour une IP donnée.
-    link_key = f"{service_name}|{info_hash}|{season or ''}|{episode or ''}|{client_ip or ''}"
-    cached_url = cache.get_link(link_key)
-    if cached_url:
-        RUNTIME["resolve_ok"] += 1
-        logging.info(f"⚡ Lien résolu servi depuis le cache ({service_name})")
-        raise web.HTTPFound(cached_url)
 
     backends = build_backends(config, client_ip=client_ip)
     backend = next((b for b in backends if b.name == service_name), None)
     if not backend:
         return web.Response(status=400, text=f"Débrideur non configuré : {service_name}")
 
+    # Cache court des liens résolus : évite de re-débrider à chaque seek
+    # (libmpv rappelle /resolve à chaque Range request). La clé inclut une
+    # empreinte de la clé API du débrideur : sans ça, deux comptes différents
+    # (ex: plusieurs profils d'une même famille) partageant la même IP
+    # publique (NAT domestique) pourraient se voir servir le lien streaming
+    # généré pour le compte de l'autre.
+    account_fp = cache.fingerprint(backend.api_key)
+    link_key = f"{service_name}|{account_fp}|{info_hash}|{season or ''}|{episode or ''}|{client_ip or ''}"
+    cached_url = cache.get_link(link_key)
+    if cached_url:
+        RUNTIME["resolve_ok"] += 1
+        logging.info(f"⚡ Lien résolu servi depuis le cache ({service_name})")
+        raise web.HTTPFound(cached_url)
+
     url = await backend.resolve(
         info_hash,
         season=int(season) if season else None,
         episode=int(episode) if episode else None,
         media_type=media_type,
+        absolute_episode=int(absolute_episode) if absolute_episode else None,
     )
     if url:
         RUNTIME["resolve_ok"] += 1
@@ -420,11 +488,19 @@ async def handle_resolve(request):
 # ============================================================================
 
 def _admin_authorized(request):
-    """Vrai si le token admin est configuré et correspond."""
+    """
+    Vrai si le token admin est configuré et correspond.
+
+    Le token n'est accepté que via l'en-tête X-Admin-Token, jamais en query
+    string (les query strings finissent dans les logs d'accès, les logs de
+    proxy/CDN comme Cloudflare, l'historique navigateur, le Referer). La
+    comparaison est à temps constant (hmac.compare_digest) pour éviter une
+    fuite du token par timing sur la comparaison caractère par caractère.
+    """
     if not ADMIN_TOKEN:
         return None  # panel désactivé
-    token = request.headers.get("X-Admin-Token") or request.query.get("token") or ""
-    return token == ADMIN_TOKEN
+    token = request.headers.get("X-Admin-Token") or ""
+    return hmac.compare_digest(token, ADMIN_TOKEN)
 
 
 def _require_admin(request):

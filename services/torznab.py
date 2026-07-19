@@ -14,6 +14,8 @@ import xml.etree.ElementTree as ET
 
 import aiohttp
 
+from core.netsafety import is_url_safe
+
 _HASH_RE = re.compile(r"btih:([a-fA-F0-9]{40})")
 
 
@@ -29,6 +31,14 @@ class TorznabService:
         url = indexer["url"].strip().rstrip("/")
         if not url.endswith("/api") and "torznab" not in url and "/results" not in url:
             url += "/api"
+
+        # SSRF : l'URL de l'indexeur vient de la config utilisateur, or Ranger
+        # est exposé publiquement — n'importe qui peut en forger une pointant
+        # vers du loopback ou les métadonnées cloud. Voir core/netsafety.py.
+        if not await is_url_safe(url):
+            logging.warning(f"Torznab [{indexer.get('name', '?')}]: URL bloquée (cible interne) : {url}")
+            return []
+
         params = dict(params)
         if indexer.get("apikey"):
             params["apikey"] = indexer["apikey"]
@@ -39,7 +49,8 @@ class TorznabService:
         try:
             async with aiohttp.ClientSession(trust_env=True) as session:
                 async with session.get(
-                    url, params=params, timeout=aiohttp.ClientTimeout(total=20)
+                    url, params=params, timeout=aiohttp.ClientTimeout(total=20),
+                    allow_redirects=False,  # une redirection pourrait viser une cible interne non validée
                 ) as resp:
                     if resp.status != 200:
                         logging.warning(f"Torznab [{indexer.get('name')}] HTTP {resp.status}")

@@ -62,7 +62,12 @@ async def run_search(config, media_info, stream_type, imdb_id, tmdb_id, season, 
     abn_service = None  # référence pour fermeture propre
 
     def add(source, factory, fingerprint=""):
-        tasks.append(_cached_search(source, factory, stream_type, imdb_id, season, episode, fingerprint))
+        # Enveloppé en Task tout de suite (pas juste une coroutine) : c'est
+        # nécessaire pour pouvoir annuler les tâches encore en cours si le
+        # budget global de recherche est dépassé, cf. plus bas.
+        tasks.append(asyncio.ensure_future(
+            _cached_search(source, factory, stream_type, imdb_id, season, episode, fingerprint)
+        ))
 
     # NB : chaque lambda binde son service via `s=<svc>` (argument par défaut).
     # Sans ce binding, toutes les closures partageraient la même variable et
@@ -166,8 +171,29 @@ async def run_search(config, media_info, stream_type, imdb_id, tmdb_id, season, 
     if not tasks:
         return []
 
+    # Budget global : chaque tracker a déjà son propre timeout (10-20s), mais
+    # asyncio.gather attend TOUS les trackers avant de renvoyer quoi que ce
+    # soit — un seul tracker lent qui va au bout de son timeout retarde toute
+    # la réponse, même si les autres ont déjà répondu en 1s. Ça peut pousser
+    # la latence totale (métadonnées + recherche + dispo débrideur) au-delà
+    # de ce que Stremio tolère côté client, avec un "0 résultat" trompeur qui
+    # se résout tout seul dès que le tracker capricieux redevient rapide.
+    # On coupe donc court à 15s : les trackers pas encore revenus sont
+    # abandonnés pour cette requête (ils redeviendront rapides tout seuls
+    # au prochain essai), les autres résultats sont quand même renvoyés.
     try:
-        results_list = await asyncio.gather(*tasks, return_exceptions=True)
+        done, pending = await asyncio.wait(tasks, timeout=15)
+        for t in pending:
+            t.cancel()
+        results_list = []
+        for t in tasks:
+            if t in done:
+                try:
+                    results_list.append(t.result())
+                except Exception as e:
+                    results_list.append(e)
+            else:
+                results_list.append(TimeoutError("budget de recherche dépassé"))
     finally:
         if abn_service:
             await abn_service.close()

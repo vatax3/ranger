@@ -42,6 +42,12 @@ DB_PATH = os.getenv("RANGER_DB", os.path.join(os.path.dirname(os.path.dirname(__
 TTL_AVAIL_CACHED = int(os.getenv("RANGER_TTL_CACHED", 6 * 3600))      # torrent vu en cache
 TTL_AVAIL_MISS = int(os.getenv("RANGER_TTL_UNCACHED", 20 * 60))       # torrent vu non-caché
 TTL_SEARCH = int(os.getenv("RANGER_TTL_SEARCH", 30 * 60))
+# Un résultat de recherche VIDE est mis en cache moins longtemps qu'un résultat
+# non-vide : sinon, un tracker en accroc passager (timeout, blip réseau, API
+# qui répond 200 avec 0 item) verrouille "aucun résultat" pour TOUT le monde
+# jusqu'à expiration du TTL_SEARCH complet (30 min par défaut), y compris une
+# fois le tracker redevenu normal. Voir core/search.py::_cached_search.
+TTL_SEARCH_EMPTY = int(os.getenv("RANGER_TTL_SEARCH_EMPTY", 3 * 60))
 TTL_META = int(os.getenv("RANGER_TTL_META", 7 * 24 * 3600))
 TTL_LINK = int(os.getenv("RANGER_TTL_LINK", 15 * 60))                 # lien débrideur résolu
 
@@ -141,11 +147,13 @@ def get_search(key):
     with _lock:
         conn = _get_conn()
         row = conn.execute("SELECT results, created_at FROM searches WHERE key = ?", (key,)).fetchone()
-    if row and now - row[1] <= TTL_SEARCH:
+    if row:
         try:
             results = json.loads(row[0])
-            _metrics["search_hit"] += 1
-            return results
+            ttl = TTL_SEARCH if results else TTL_SEARCH_EMPTY
+            if now - row[1] <= ttl:
+                _metrics["search_hit"] += 1
+                return results
         except Exception:
             pass
     _metrics["search_miss"] += 1

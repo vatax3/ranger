@@ -34,7 +34,7 @@ class TorBoxService:
             "list_files": "true"
         }
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 async with session.get(url, headers=self.headers, params=params) as response:
                     if response.status != 200:
@@ -76,7 +76,7 @@ class TorBoxService:
             "seed": 2  # Mode de seed
         }
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 async with session.post(url, headers=self.headers, data=data) as response:
                     if response.status != 200:
@@ -120,7 +120,7 @@ class TorBoxService:
             "list_files": "true"
         }
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 async with session.get(url, headers=self.headers, params=params) as response:
                     if response.status != 200:
@@ -151,7 +151,7 @@ class TorBoxService:
         url = f"{self.base_url}/torrents/mylist"
         params = {"id": torrent_id}
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 async with session.get(url, headers=self.headers, params=params) as response:
                     if response.status != 200:
@@ -223,7 +223,7 @@ class TorBoxService:
         }
         
         for attempt in range(max_retries):
-            async with aiohttp.ClientSession(trust_env=True) as session:
+            async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                 try:
                     if attempt > 0:
                         logging.info(f"TorBox: Retry attempt {attempt + 1}/{max_retries}")

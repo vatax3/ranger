@@ -16,7 +16,7 @@ class Tr4kerService:
         log_q = params.get('tmdbid') or params.get('imdbid') or params.get('q', '')
         logging.info(f"Tr4ker Search: {self.base_url}?t={params.get('t')}&{log_q}")
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 async with session.get(self.base_url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as response:
                     if response.status == 200:

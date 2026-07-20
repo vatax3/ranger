@@ -110,7 +110,7 @@ class StremThruService:
 
         logging.info(f"StremThru [{self.store_name}]: Checking availability for {len(cleaned_hashes)} hashes")
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             async def _check_batch(batch):
                 params = self._params({"magnet": ",".join(batch)})
                 try:
@@ -152,7 +152,7 @@ class StremThruService:
 
         magnet_uri = f"magnet:?xt=urn:btih:{magnet_hash}"
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             # 1. Ajout du magnet au store
             try:
                 async with session.post(

@@ -47,7 +47,7 @@ class TorznabService:
         logging.info(f"Torznab [{indexer.get('name', '?')}]: ?{urllib.parse.urlencode(log_params)}")
 
         try:
-            async with aiohttp.ClientSession(trust_env=True) as session:
+            async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                 async with session.get(
                     url, params=params, timeout=aiohttp.ClientTimeout(total=20),
                     allow_redirects=False,  # une redirection pourrait viser une cible interne non validée

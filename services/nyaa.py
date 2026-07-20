@@ -16,7 +16,7 @@ class NyaaService:
 
         logging.info(f"Nyaa Search: {self.base_url}?{urllib.parse.urlencode(params)}")
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 for attempt in range(max_attempts):
                     # Nyaa throttle vite (429 dès ~8 requêtes simultanées) : backoff + retry

@@ -81,7 +81,7 @@ class AllDebridService:
         failed_ids = []
         success_count = 0
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 for i in range(0, len(magnet_ids), batch_size):
                     batch = magnet_ids[i:i + batch_size]
@@ -177,7 +177,7 @@ class AllDebridService:
                 "magnets[]": batch
             }
             
-            async with aiohttp.ClientSession(trust_env=True) as session:
+            async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                 try:
                     async with session.post(url, data=data) as response:
                         if response.status == 200:
@@ -236,7 +236,7 @@ class AllDebridService:
         magnet_hash = self._clean_hash(magnet_hash)
         logging.info(f"🔓 AD unlock_magnet: hash={magnet_hash}, S{season}E{episode}, type={media_type}")
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             # 1. Upload Magnet
             upload_url = f"{self.base_url}/magnet/upload"
             params = {

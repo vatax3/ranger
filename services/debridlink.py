@@ -16,7 +16,7 @@ class DebridLinkService:
             "Authorization": f"Bearer {self.api_key}",
         }
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 list_url = f"{self.base_url}/seedbox/list"
                 async with session.get(list_url, headers=headers, timeout=10) as resp:
@@ -70,7 +70,7 @@ class DebridLinkService:
         if ids_to_delete:
             async def _cleanup():
                 headers = {"Authorization": f"Bearer {self.api_key}"}
-                async with aiohttp.ClientSession(trust_env=True) as session:
+                async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     await asyncio.gather(
                         *[self._remove_torrent(session, headers, tid) for tid in ids_to_delete],
                         return_exceptions=True
@@ -91,7 +91,7 @@ class DebridLinkService:
         
         add_url = f"{self.base_url}/seedbox/add"
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 payload = {
                     "url": hash_value,
@@ -153,7 +153,7 @@ class DebridLinkService:
         
         add_url = f"{self.base_url}/seedbox/add"
         
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             try:
                 # Ajouter le torrent
                 payload = {

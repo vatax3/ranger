@@ -21,7 +21,7 @@ def _is_video_category(cat):
 class ApibayService:
     async def _query(self, query):
         try:
-            async with aiohttp.ClientSession(trust_env=True) as session:
+            async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                 async with session.get(
                     API_URL,
                     params={"q": query},

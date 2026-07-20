@@ -44,7 +44,7 @@ class RealDebridService:
         availability = {}
         batch_size = 50
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             for i in range(0, len(cleaned), batch_size):
                 batch = cleaned[i:i + batch_size]
                 url = f"{API_BASE}/torrents/instantAvailability/{'/'.join(batch)}"
@@ -80,7 +80,7 @@ class RealDebridService:
         magnet_uri = f"magnet:?xt=urn:btih:{magnet_hash}"
         logging.info(f"🔓 RD (natif) unlock: hash={magnet_hash[:16]}..., S{season}E{episode}")
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             # 1. Ajouter le magnet
             try:
                 async with session.post(

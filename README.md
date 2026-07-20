@@ -104,7 +104,8 @@ Accessible sur `/admin` dès que `RANGER_ADMIN_TOKEN` est défini (sinon le pane
 | `RANGER_PUBLIC_URL` | — | URL publique fixe (ex: `https://ranger.mondomaine.fr`), prioritaire sur `X-Forwarded-Proto`/`Host`. Recommandé si le port du conteneur est aussi joignable directement (headers usurpables sinon). |
 | `RANGER_TTL_CACHED` | `21600` (6 h) | TTL cache « en cache » |
 | `RANGER_TTL_UNCACHED` | `1200` (20 min) | TTL cache « non caché » |
-| `RANGER_TTL_SEARCH` | `1800` (30 min) | TTL résultats de recherche |
+| `RANGER_TTL_SEARCH` | `1800` (30 min) | TTL résultats de recherche (non vides) |
+| `RANGER_TTL_SEARCH_EMPTY` | `180` (3 min) | TTL résultats de recherche vides — court exprès pour qu'un accroc passager d'un tracker s'auto-résolve vite au lieu de verrouiller "aucun résultat" pour tout le monde |
 | `RANGER_TTL_META` | `604800` (7 j) | TTL métadonnées TMDB |
 | `RANGER_TTL_LINK` | `900` (15 min) | TTL des liens débrideur résolus (seek instantané) |
 | `HTTP_PROXY` / `HTTPS_PROXY` | — | Proxy sortant optionnel |

@@ -15,7 +15,7 @@ class EztvService:
         params = {"imdb_id": imdb_numeric, "limit": 100, "page": page}
         for url in [API_URL] + FALLBACK_URLS:
             try:
-                async with aiohttp.ClientSession(trust_env=True) as session:
+                async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     async with session.get(
                         url, params=params, timeout=aiohttp.ClientTimeout(total=10)
                     ) as resp:

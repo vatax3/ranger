@@ -42,7 +42,7 @@ async def get_media_info(imdb_id, stream_type, tmdb_key):
 async def _from_tmdb(imdb_id, stream_type, tmdb_key):
     kind = "movie" if stream_type == "movie" else "tv"
     try:
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             # 1. IMDB -> TMDB
             async with session.get(
                 f"{TMDB_BASE}/find/{imdb_id}",
@@ -108,7 +108,7 @@ async def _from_tmdb(imdb_id, stream_type, tmdb_key):
 async def _from_cinemeta(imdb_id, stream_type):
     kind = "movie" if stream_type == "movie" else "series"
     try:
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             async with session.get(
                 f"{CINEMETA_BASE}/{kind}/{imdb_id}.json",
                 timeout=aiohttp.ClientTimeout(total=10),

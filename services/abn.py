@@ -30,7 +30,7 @@ class ABNService:
             return True
         
         # Créer une session avec cookie jar
-        self.session = aiohttp.ClientSession(trust_env=True)
+        self.session = aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20))
         
         login_url = f"{self.base_url}/Home/Login"
         

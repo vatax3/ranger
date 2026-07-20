@@ -117,7 +117,7 @@ class Unit3DService:
             pack_params = {'seasonNumber': season}
             params_list.append(pack_params)
 
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             for tracker in self.trackers:
                 for common_params in params_list:
                     # Recherche TMDB

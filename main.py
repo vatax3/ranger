@@ -150,6 +150,15 @@ async def handle_configure(request):
                 prefill = json_for_script(decoded)
         content = content.replace("const PREFILL = null;", f"const PREFILL = {prefill};")
 
+        # Base publique fiable (schéma+host), calculée côté serveur — la page
+        # ne doit pas déduire le schéma via window.location côté client : si
+        # /configure a été atteinte par un chemin http (proxy, accès direct
+        # au port...), l'URL de manifest générée hériterait du mauvais
+        # schéma, causant une erreur TLS à l'installation dans Stremio.
+        content = content.replace(
+            'const PUBLIC_BASE = "";', f'const PUBLIC_BASE = {json_for_script(external_host_url(request))};'
+        )
+
         return web.Response(text=content, content_type="text/html")
     except Exception as e:
         logging.error(f"configure error: {e}")
